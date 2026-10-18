@@ -65,3 +65,21 @@ def test_mermaid_export_contains_conditional_edges():
     assert "ingest_dq -.-> halt" in text
     assert "validate -.-> halt" in text
     assert "critic -.-> run_extra_analyses" in text
+
+
+def test_split_and_leg_artefacts_persisted(init_state):
+    from pathlib import Path
+
+    import pandas as pd
+
+    final = build_graph().invoke(init_state(), {"recursion_limit": 60})
+    s = final["split"]
+    for p in ("train", "test", "oot"):
+        assert Path(s["id_paths"][p]).exists()
+    assert s["pseudo_oot"] is True
+    ids = set(pd.read_parquet(s["assignment_path"])["SK_ID_CURR"])
+    for leg, info in final["legs"].items():
+        f = pd.read_parquet(info["features_path"])
+        d = pd.read_csv(info["dictionary_path"])
+        assert set(f.index) == ids, leg
+        assert list(d["name"]) == list(f.columns), leg

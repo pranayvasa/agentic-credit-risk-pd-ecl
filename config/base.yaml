@@ -4,7 +4,13 @@ seed: 42
 
 paths:
   raw_dir: data/raw
+  interim_dir: data/interim      # downcast parquet cache built from raw CSVs (gitignored)
   outputs_dir: outputs
+
+runtime:
+  # Max nodes LangGraph runs at once. The four legs run in parallel; on an 8 GB machine,
+  # 2 keeps peak memory safe on full runs.
+  max_concurrency: 2
 
 data:
   id_col: SK_ID_CURR
@@ -17,6 +23,12 @@ data:
     pos_cash: POS_CASH_balance.csv
     credit_card: credit_card_balance.csv
     previous: previous_application.csv
+
+dq:
+  min_rows: 1000
+  target_rate_band: [0.05, 0.12]   # Home Credit's known rate is ~8.1%; outside the band is flagged high
+  high_missing_share: 0.50         # columns above this missing share are listed
+  duplicate_share_max: 0.001       # child-table duplicate rows above this share are medium severity
 
 split:
   # Step 1: full population -> (dev, oot) 75:25, stratified on TARGET.

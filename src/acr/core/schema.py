@@ -1,0 +1,59 @@
+"""Columns each table must provide. Data-quality checks fail critically if any are missing."""
+
+from __future__ import annotations
+
+ID = "SK_ID_CURR"
+TARGET = "TARGET"
+
+# Home Credit encodes "not applicable / far future" in DAYS_* columns as 365243.
+DAYS_SENTINEL = 365243
+
+APP_NUMERIC = [
+    "EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3",
+    "AMT_INCOME_TOTAL", "AMT_CREDIT", "AMT_ANNUITY", "AMT_GOODS_PRICE",
+    "DAYS_BIRTH", "DAYS_EMPLOYED", "DAYS_REGISTRATION", "DAYS_ID_PUBLISH",
+    "DAYS_LAST_PHONE_CHANGE", "CNT_CHILDREN", "CNT_FAM_MEMBERS",
+    "REGION_POPULATION_RELATIVE", "REGION_RATING_CLIENT_W_CITY", "OWN_CAR_AGE",
+    "AMT_REQ_CREDIT_BUREAU_MON", "AMT_REQ_CREDIT_BUREAU_QRT", "AMT_REQ_CREDIT_BUREAU_YEAR",
+    "DEF_30_CNT_SOCIAL_CIRCLE", "DEF_60_CNT_SOCIAL_CIRCLE", "OBS_30_CNT_SOCIAL_CIRCLE",
+    "FLAG_DOCUMENT_3", "REG_CITY_NOT_WORK_CITY", "REG_CITY_NOT_LIVE_CITY",
+    "FLAG_WORK_PHONE", "FLAG_PHONE", "TOTALAREA_MODE",
+]  # fmt: skip
+APP_CATEGORICAL = [
+    "NAME_CONTRACT_TYPE", "FLAG_OWN_CAR", "FLAG_OWN_REALTY", "NAME_INCOME_TYPE",
+    "NAME_EDUCATION_TYPE", "NAME_HOUSING_TYPE", "OCCUPATION_TYPE", "ORGANIZATION_TYPE",
+]  # fmt: skip
+# Protected characteristics: kept for segment and fairness analysis, never offered to the model.
+APP_PROTECTED = ["CODE_GENDER", "NAME_FAMILY_STATUS"]
+
+REQUIRED_COLUMNS: dict[str, list[str]] = {
+    "application": [ID, TARGET, *APP_NUMERIC, *APP_CATEGORICAL, *APP_PROTECTED],
+    "bureau": [
+        ID, "SK_ID_BUREAU", "CREDIT_ACTIVE", "DAYS_CREDIT", "CREDIT_DAY_OVERDUE",
+        "DAYS_CREDIT_ENDDATE", "AMT_CREDIT_MAX_OVERDUE", "CNT_CREDIT_PROLONG", "AMT_CREDIT_SUM",
+        "AMT_CREDIT_SUM_DEBT", "AMT_CREDIT_SUM_OVERDUE", "CREDIT_TYPE",
+    ],
+    "bureau_balance": ["SK_ID_BUREAU", "MONTHS_BALANCE", "STATUS"],
+    "installments": [
+        "SK_ID_PREV", ID, "NUM_INSTALMENT_VERSION", "NUM_INSTALMENT_NUMBER", "DAYS_INSTALMENT",
+        "DAYS_ENTRY_PAYMENT", "AMT_INSTALMENT", "AMT_PAYMENT",
+    ],
+    "pos_cash": [
+        "SK_ID_PREV", ID, "MONTHS_BALANCE", "CNT_INSTALMENT_FUTURE", "NAME_CONTRACT_STATUS",
+        "SK_DPD_DEF",
+    ],
+    "credit_card": [
+        "SK_ID_PREV", ID, "MONTHS_BALANCE", "AMT_BALANCE", "AMT_CREDIT_LIMIT_ACTUAL",
+        "AMT_DRAWINGS_ATM_CURRENT", "AMT_PAYMENT_CURRENT", "AMT_INST_MIN_REGULARITY", "SK_DPD_DEF",
+    ],
+    "previous": [
+        "SK_ID_PREV", ID, "NAME_CONTRACT_TYPE", "AMT_ANNUITY", "AMT_APPLICATION", "AMT_CREDIT",
+        "RATE_DOWN_PAYMENT", "NAME_CONTRACT_STATUS", "DAYS_DECISION", "CNT_PAYMENT",
+        "NAME_YIELD_GROUP", "DAYS_TERMINATION",
+    ],
+}  # fmt: skip
+
+# Amounts kept at float64 in the cache (they feed EIR and EAD maths in the ECL layer).
+KEEP_FLOAT64 = {"application": {"AMT_INCOME_TOTAL", "AMT_CREDIT", "AMT_ANNUITY", "AMT_GOODS_PRICE"}}
+
+BUREAU_STATUS_DOMAIN = {"0", "1", "2", "3", "4", "5", "C", "X"}

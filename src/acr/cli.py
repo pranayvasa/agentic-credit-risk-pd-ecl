@@ -28,7 +28,9 @@ def _run(args: argparse.Namespace) -> int:
     if args.sample is not None:
         sample = args.sample if args.sample > 0 else cfg.base.sample.default_frac
     init = {"config": cfg.model_dump(mode="json"), "sample_frac": sample, "llm_mode": cfg.llm.mode}
-    final = build_graph().invoke(init, {"recursion_limit": 60})
+    final = build_graph().invoke(
+        init, {"recursion_limit": 60, "max_concurrency": cfg.base.runtime.max_concurrency}
+    )
 
     report = final.get("report", {})
     print(f"\nRun {final['run_id']}  status={report.get('status')}  outputs={final['run_dir']}")

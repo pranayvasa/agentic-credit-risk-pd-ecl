@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from acr.audit import node, write_event
-from acr.config import REPO_ROOT, AppConfig
+from acr.config import AppConfig, resolve_path
 
 
 @node(
@@ -23,7 +23,7 @@ def setup(view):
     frac = view.get("sample_frac")
     scope = "full" if frac is None else f"s{round(frac * 100):02d}"
     run_id = f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}_{scope}_{h}"
-    run_dir = REPO_ROOT / cfg.base.paths.outputs_dir / run_id
+    run_dir = resolve_path(cfg.base.paths.outputs_dir) / run_id
     (run_dir / "artefacts").mkdir(parents=True, exist_ok=False)
     (Path(run_dir) / "config_snapshot.json").write_text(
         json.dumps(cfg.model_dump(mode="json"), indent=2, sort_keys=True)

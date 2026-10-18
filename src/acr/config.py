@@ -25,7 +25,19 @@ class _Strict(BaseModel):
 
 class Paths(_Strict):
     raw_dir: str
+    interim_dir: str
     outputs_dir: str
+
+
+class RuntimeCfg(_Strict):
+    max_concurrency: int = Field(ge=1)
+
+
+class DQCfg(_Strict):
+    min_rows: int
+    target_rate_band: tuple[float, float]
+    high_missing_share: float
+    duplicate_share_max: float
 
 
 class DataCfg(_Strict):
@@ -78,7 +90,9 @@ class BaseCfg(_Strict):
     config_version: str
     seed: int
     paths: Paths
+    runtime: RuntimeCfg
     data: DataCfg
+    dq: DQCfg
     split: SplitCfg
     sample: SampleCfg
     features: FeatureCfg
@@ -162,6 +176,12 @@ class AppConfig(_Strict):
 
     def gate_set(self, is_sample: bool) -> GateSet:
         return self.gates.sample if is_sample else self.gates.full
+
+
+def resolve_path(p: str | Path) -> Path:
+    """Config paths are relative to the repo root unless absolute."""
+    p = Path(p)
+    return p if p.is_absolute() else REPO_ROOT / p
 
 
 def _read(name: str, config_dir: Path) -> dict:
