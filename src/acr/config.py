@@ -146,9 +146,28 @@ class GateSet(_Strict):
     dq_halt_on: list[str]
 
 
+class ValidationCfg(_Strict):
+    gini_amber_margin: float
+    csi_amber: float
+    csi_red: float
+    binomial_alpha_red: float
+    binomial_alpha_amber: float
+    calibration_ratio_tol: float
+    overfit_gap_medium: float
+    challenger_gap_medium: float
+    segment_gini_min: float
+    segment_min_n: int
+    external_score_share_max: float
+    grade_share_min: float
+    grade_share_max: float
+    bootstrap_n: int
+    stress_young_weights: list[float]
+
+
 class GatesCfg(_Strict):
     full: GateSet
     sample: GateSet
+    validation: ValidationCfg
 
 
 class GeminiCfg(_Strict):

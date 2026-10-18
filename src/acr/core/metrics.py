@@ -51,8 +51,11 @@ def calibration_slope_intercept(y, p) -> tuple[float, float]:
     """Logistic recalibration: logit(P(y=1)) = a + b * logit(p). Perfect calibration: a=0, b=1."""
     import statsmodels.api as sm
 
-    lp = np.log(np.clip(p, EPS, 1 - EPS) / (1 - np.clip(p, EPS, 1 - EPS)))
-    res = sm.Logit(np.asarray(y), sm.add_constant(lp)).fit(disp=0)
+    p = np.clip(np.asarray(p, dtype="float64"), EPS, 1 - EPS)
+    lp = np.log(p / (1 - p))
+    if np.std(lp) < 1e-9:  # constant predictions: slope undefined
+        return float("nan"), float("nan")
+    res = sm.Logit(np.asarray(y), sm.add_constant(lp, has_constant="add")).fit(disp=0)
     return float(res.params[1]), float(res.params[0])
 
 

@@ -14,3 +14,22 @@ sample:
   psi_red: 0.25
   psi_amber: 0.10
   dq_halt_on: [critical]
+
+# Thresholds for the independent validator's findings (all runs). Severity scale:
+# info < low < medium < high < red. Only the gates above can halt a run.
+validation:
+  gini_amber_margin: 0.05      # holdout Gini within this of the gate minimum -> medium finding
+  csi_amber: 0.10              # per selected feature, train vs test/OOT
+  csi_red: 0.25
+  binomial_alpha_red: 0.01     # grade-level one-sided binomial test (PD under-prediction)
+  binomial_alpha_amber: 0.05
+  calibration_ratio_tol: 0.10  # |mean PD / default rate - 1| per segment
+  overfit_gap_medium: 0.10     # train Gini minus OOT Gini
+  challenger_gap_medium: 0.05  # challenger OOT Gini minus champion OOT Gini
+  segment_gini_min: 0.30
+  segment_min_n: 1000          # smaller segments are reported but not judged
+  external_score_share_max: 0.50   # share of scorecard points range from EXT_SOURCE features
+  grade_share_min: 0.01
+  grade_share_max: 0.30
+  bootstrap_n: 200             # resamples for the champion-vs-challenger Gini difference
+  stress_young_weights: [3, 10, 50]   # stress-PSI ladder: weight on applicants under 30 in the OOT book
