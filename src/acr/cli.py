@@ -61,6 +61,30 @@ def _graph(args: argparse.Namespace) -> int:
     return 0
 
 
+def _tune(args: argparse.Namespace) -> int:
+    from acr.config import resolve_path
+    from acr.tuning import load_tuning, run
+
+    cfg = load_config()
+    tcfg = load_tuning()
+    if args.folds:
+        tcfg = tcfg.model_copy(update={"folds": args.folds})
+    runs_dir = resolve_path(cfg.base.paths.outputs_dir)
+    if args.run:
+        src = runs_dir / args.run
+    else:
+        done = sorted(p for p in runs_dir.glob("*_full_*")
+                      if (p / "artefacts" / "selection" / "selection.json").exists())  # fmt: skip
+        if not done:
+            print("no completed full run found; run `acr run` first or pass --run")
+            return 1
+        src = done[-1]
+    print(f"tuning on train partition of {src.name}")
+    out = run(src, cfg, tcfg, args.only, lambda *a: print(*a, flush=True))
+    print(f"report: {out / 'tuning_report.md'}")
+    return 0
+
+
 def _nodes(_: argparse.Namespace) -> int:
     import acr.graph  # noqa: F401  (imports register every node)
     from acr.audit import NODE_REGISTRY
@@ -99,6 +123,14 @@ def main(argv: list[str] | None = None) -> int:
     gr = sub.add_parser("graph", help="export the compiled graph as Mermaid to docs/graph.mmd")
     gr.add_argument("--print", action="store_true")
     gr.set_defaults(func=_graph)
+
+    t = sub.add_parser(
+        "tune", help="offline train-only CV tuning; writes a report, changes nothing"
+    )
+    t.add_argument("--run", default=None, help="source run id (default: latest full run)")
+    t.add_argument("--only", choices=["both", "scorecard", "lightgbm"], default="both")
+    t.add_argument("--folds", type=int, default=None)
+    t.set_defaults(func=_tune)
 
     n = sub.add_parser("nodes", help="print every node's declared contract as JSON")
     n.set_defaults(func=_nodes)

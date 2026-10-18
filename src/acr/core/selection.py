@@ -76,9 +76,12 @@ def backward_eliminate(W: pd.DataFrame, y: pd.Series, p_max: float,
 
 
 def select_features(features: pd.DataFrame, dictionary: pd.DataFrame, assignment: pd.DataFrame,
-                    cfg: FeatureCfg) -> SelectionResult:  # fmt: skip
+                    cfg: FeatureCfg, binning=None) -> SelectionResult:  # fmt: skip
     """``features`` is indexed by SK_ID_CURR and covers all partitions; ``assignment`` holds
-    SK_ID_CURR, TARGET and partition. Targets are read for train only."""
+    SK_ID_CURR, TARGET and partition. Targets are read for train only.
+
+    ``binning`` lets offline tuning reuse a BinningProcess already fitted on the same train
+    rows with the same bin settings; pipeline runs always fit it here."""
     a = assignment.set_index("SK_ID_CURR")
     train_ids = a.index[a["partition"] == "train"]
     test_ids = a.index[a["partition"] == "test"]
@@ -98,9 +101,11 @@ def select_features(features: pd.DataFrame, dictionary: pd.DataFrame, assignment
         log.append({"feature": f, "stage": "missing", "reason": f"missing share above "
                     f"{cfg.missing_max}", "value": round(float(miss[f]), 4)})  # fmt: skip
     live = [f for f in cands if miss[f] <= cfg.missing_max]
+    if binning is not None:
+        live = list(binning.variable_names)
     cat_live = [f for f in live if f in categorical]
 
-    bp = B.fit_binning(Xtr[live], ytr, cat_live, cfg.min_bin_size, cfg.max_n_bins)
+    bp = binning or B.fit_binning(Xtr[live], ytr, cat_live, cfg.min_bin_size, cfg.max_n_bins)
     iv = B.iv_table(bp, live).set_index("feature")
     keep = []
     for f in live:

@@ -1,0 +1,23 @@
+# Offline hyperparameter tuning (`acr tune`). Not used by pipeline runs: winners are reviewed
+# and then frozen into base.yaml by hand, with a decision entry in docs/DECISIONS.md.
+# All tuning is cross-validation inside the TRAIN partition. Test and OOT are never touched.
+# Hard limits (validated): at most 15 scorecard variables; LightGBM max_depth 1..10.
+folds: 3
+selection_rule: one_se      # simplest config within 1 standard error of the best mean CV Gini
+
+scorecard:
+  # Lean grid: feature count is the question; bin settings matter less.
+  max_n_bins: [4, 6]
+  min_bin_size: [0.05]
+  max_features: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+  iv_min: [0.02]
+  # Simplicity order for the 1-SE rule: fewer features, then fewer bins.
+
+lightgbm:
+  # Tree cap stays at base.yaml n_estimators (1000) to keep the model lean.
+  max_depth: [3, 4, 5, 6, 8, 10]
+  num_leaves: [15, 31]       # effective leaves are capped at 2^max_depth
+  min_child_samples: [300, 1000]
+  colsample_bytree: [0.7]
+  reg_lambda: [10.0]
+  # Simplicity order: shallower, then fewer effective leaves, then more samples per leaf.

@@ -19,6 +19,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = REPO_ROOT / "config"
 
 
+# Author's hard limits for a lean model. Neither pipeline runs nor tuning may exceed them.
+MAX_SCORECARD_FEATURES = 15
+MAX_TREE_DEPTH = 10
+
+
+def check_depth(depth: int) -> int:
+    if not 1 <= int(depth) <= MAX_TREE_DEPTH:
+        raise ValueError(f"LightGBM max_depth must be 1..{MAX_TREE_DEPTH} (no unlimited depth), "
+                         f"got {depth}")  # fmt: skip
+    return int(depth)
+
+
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -59,7 +71,7 @@ class FeatureCfg(_Strict):
     min_bin_size: float
     max_n_bins: int
     missing_max: float
-    max_features: int
+    max_features: int = Field(ge=1, le=MAX_SCORECARD_FEATURES)
     p_value_max: float
     iv_min: float
     iv_suspicious: float
@@ -101,6 +113,14 @@ class ModelCfg(_Strict):
     lightgbm_fit: LGBMFitCfg
     calibration: CalibrationCfg
     lightgbm: dict[str, float | int]
+
+    @model_validator(mode="after")
+    def _lean_trees(self) -> ModelCfg:
+        if "max_depth" not in self.lightgbm:
+            raise ValueError("LightGBM max_depth must be set explicitly (limit 10)")
+        check_depth(self.lightgbm["max_depth"])
+        return self
+
     master_scale: MasterScaleCfg
 
 

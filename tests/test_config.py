@@ -52,3 +52,20 @@ def test_gemini_models_have_cost_rates():
     assert llm.gemini.final_model == "gemini-3.6-flash"
     for m in (llm.gemini.test_model, llm.gemini.final_model):
         assert m in llm.cost_per_million
+
+
+def test_pipeline_config_enforces_lean_model_limits():
+    for path, bad in ((("base", "features", "max_features"), 16),
+                      (("base", "model", "lightgbm", "max_depth"), -1),
+                      (("base", "model", "lightgbm", "max_depth"), 11)):  # fmt: skip
+        d = load_config().model_dump(mode="json")
+        node = d
+        for k in path[:-1]:
+            node = node[k]
+        node[path[-1]] = bad
+        with pytest.raises(ValidationError):
+            AppConfig.model_validate(d)
+    d = load_config().model_dump(mode="json")
+    del d["base"]["model"]["lightgbm"]["max_depth"]
+    with pytest.raises(ValidationError, match="max_depth must be set"):
+        AppConfig.model_validate(d)
