@@ -19,5 +19,5 @@ Agreed decisions and deviations from the brief live in `docs/DECISIONS.md`; they
 ## Local environment
 - Raw Kaggle CSVs are already at `data/raw/` (about 2.5 GB).
 - Virtualenv at `.venv` (Python 3.13). Install with `.venv/bin/pip install -e ".[dev]"`. Run `.venv/bin/acr run --sample`, `.venv/bin/pytest`, `.venv/bin/ruff check .`.
-- Phase status: Phases 1-2 done (skeleton; DQ, split, four legs). Selection, model, validation, ECL, docs and grounding are stubs until their phase.
+- Phase status: Phases 1-3 done (skeleton; DQ, split, legs; selection and modelling). Validation, ECL, docs and grounding are stubs until their phase.
 - Tests use a synthetic dataset (`tests/synthetic.py`), never the Kaggle files.

@@ -24,3 +24,13 @@ def is_sample(view: Mapping[str, Any]) -> bool:
 
 
 STUB = "stub: implemented in a later phase"
+
+
+def sha256(path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()

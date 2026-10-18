@@ -24,15 +24,18 @@ def make_tables(n: int = 3000, seed: int = 0) -> dict[str, pd.DataFrame]:
     rng = np.random.default_rng(seed)
     ids = np.arange(100_001, 100_001 + n)
     ext = rng.uniform(0, 1, n)
-    p = 1 / (1 + np.exp(-(-2.6 - 2.5 * (ext - 0.5))))
+    # Realistic signal strength: IV of the EXT_SOURCE features lands around 0.2-0.4.
+    p = 1 / (1 + np.exp(-(-2.5 - 1.6 * (ext - 0.5))))
     target = (rng.uniform(size=n) < p).astype(int)
 
     app = pd.DataFrame({"SK_ID_CURR": ids, "TARGET": target})
     for c in APP_NUMERIC:
         app[c] = rng.normal(0, 1, n).round(3)
-    app["EXT_SOURCE_1"] = np.where(rng.uniform(size=n) < 0.5, np.nan, ext)
-    app["EXT_SOURCE_2"] = (ext + rng.normal(0, 0.1, n)).clip(0, 1)
-    app["EXT_SOURCE_3"] = (ext + rng.normal(0, 0.2, n)).clip(0, 1)
+    app["EXT_SOURCE_1"] = np.where(
+        rng.uniform(size=n) < 0.5, np.nan, (ext + rng.normal(0, 0.3, n)).clip(0, 1)
+    )
+    app["EXT_SOURCE_2"] = (ext + rng.normal(0, 0.3, n)).clip(0, 1)
+    app["EXT_SOURCE_3"] = (ext + rng.normal(0, 0.4, n)).clip(0, 1)
     app["AMT_INCOME_TOTAL"] = rng.uniform(5e4, 5e5, n).round(1)
     app["AMT_CREDIT"] = rng.uniform(5e4, 1e6, n).round(1)
     app["AMT_ANNUITY"] = (app["AMT_CREDIT"] / rng.integers(12, 60, n) * 1.2).round(1)

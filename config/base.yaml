@@ -41,6 +41,12 @@ sample:
   default_frac: 0.10
 
 features:
+  # Fitted on train only. Test is used only for the CSI stability screen (D8).
+  min_bin_size: 0.05         # each WoE bin holds at least 5% of train
+  max_n_bins: 6
+  missing_max: 0.95          # exclude candidates missing for more than 95% of train
+  max_features: 20           # scorecard size cap after pruning, ranked by IV
+  p_value_max: 0.05          # backward elimination on the WoE logistic regression
   iv_min: 0.02
   iv_suspicious: 0.50        # IV above this is flagged for possible leakage
   corr_max: 0.70
@@ -52,8 +58,15 @@ model:
     pdo: 20
     base_score: 600
     base_odds: 50            # good:bad odds at base_score
+  lightgbm_fit:
+    validation_frac: 0.10    # internal early-stopping split carved out of train (never test)
+    early_stopping_rounds: 50
+  calibration:
+    cv_folds: 5              # out-of-fold predictions on train drive the calibration decision
+    ece_max: 0.005           # recalibrate if OOF decile ECE exceeds this
+    slope_tol: 0.10          # or if the OOF calibration slope differs from 1 by more than this
   lightgbm:
-    n_estimators: 500
+    n_estimators: 1000
     learning_rate: 0.03
     num_leaves: 31
     min_child_samples: 100

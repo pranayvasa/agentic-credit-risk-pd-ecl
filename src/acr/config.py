@@ -56,6 +56,11 @@ class SampleCfg(_Strict):
 
 
 class FeatureCfg(_Strict):
+    min_bin_size: float
+    max_n_bins: int
+    missing_max: float
+    max_features: int
+    p_value_max: float
     iv_min: float
     iv_suspicious: float
     corr_max: float
@@ -80,8 +85,21 @@ class MasterScaleCfg(_Strict):
         return self
 
 
+class LGBMFitCfg(_Strict):
+    validation_frac: float
+    early_stopping_rounds: int
+
+
+class CalibrationCfg(_Strict):
+    cv_folds: int
+    ece_max: float
+    slope_tol: float
+
+
 class ModelCfg(_Strict):
     scorecard: ScorecardCfg
+    lightgbm_fit: LGBMFitCfg
+    calibration: CalibrationCfg
     lightgbm: dict[str, float | int]
     master_scale: MasterScaleCfg
 
