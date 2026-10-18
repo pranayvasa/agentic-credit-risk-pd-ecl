@@ -1,0 +1,16 @@
+# Validation gates. A "red" outcome routes to the halt node.
+full:
+  enforce: true
+  gini_min_test: 0.45
+  gini_min_oot: 0.45
+  psi_red: 0.25
+  psi_amber: 0.10
+  dq_halt_on: [critical]
+sample:
+  # --sample runs are noisier; gates are reported but do not halt.
+  enforce: false
+  gini_min_test: 0.35
+  gini_min_oot: 0.35
+  psi_red: 0.25
+  psi_amber: 0.10
+  dq_halt_on: [critical]

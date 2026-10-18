@@ -1,0 +1,37 @@
+# ILLUSTRATIVE ECL SIMULATION. Home Credit is an application-level dataset, not a live book.
+# Regulatory parameters verified against the primary text:
+#   Reserve Bank of India (Commercial Banks - Asset Classification, Provisioning and Income
+#   Recognition) Directions, 2026. RBI/DOR/2026-27/398, DOR.STR.REC.No.6/21.06.011/2026-27,
+#   dated 27 April 2026, effective 1 April 2027.
+#   https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=13400 (checked 2026-10-18)
+regulation:
+  reference: "RBI/DOR/2026-27/398"
+  effective_date: "2027-04-01"
+
+product_category: unsecured_retail     # para 82(3)(x)
+
+pd:
+  floor_12m: 0.0003                    # para 96: 12-month PD regulatory minimum 0.03%
+
+lgd:
+  base: 0.70                           # para 97: backstop LGD 70% on unsecured portion
+  sensitivity: [0.45, 0.55, 0.70, 0.80]  # 0.45 is a Basel F-IRB-style comparison, not RBI base
+
+staging:
+  sicr_dpd_presumption: 30             # para 33: rebuttable presumption at >30 DPD
+  credit_impaired_dpd: 90              # NPA definition retained (Chapter II)
+  lookback_months: 12                  # illustrative; how far back prior-loan delinquency counts
+  sicr_grade_notches: 3                # illustrative relative criterion (origination-proxy vs reporting grade)
+  sicr_pd_ratio: 2.0                   # illustrative relative criterion
+  sicr_abs_pd_min: 0.05                # illustrative absolute backstop used with the ratio test
+
+floors:                                # para 82(3)(x), unsecured retail
+  stage1: 0.01
+  stage2: 0.05
+  stage3_0_1y: 0.25
+  stage3_after_1y: 1.00
+
+scenarios:                             # ILLUSTRATIVE; para 48 requires multiple scenarios
+  base:     {weight: 0.60, pd_scalar: 1.00}
+  upside:   {weight: 0.15, pd_scalar: 0.85}
+  downside: {weight: 0.25, pd_scalar: 1.35}

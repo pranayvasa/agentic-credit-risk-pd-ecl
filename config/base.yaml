@@ -1,0 +1,54 @@
+# Versioned run configuration. Any change to a value here changes the config hash in the audit trail.
+config_version: "0.1.0"
+seed: 42
+
+paths:
+  raw_dir: data/raw
+  outputs_dir: outputs
+
+data:
+  id_col: SK_ID_CURR
+  target_col: TARGET
+  tables:
+    application: application_train.csv
+    bureau: bureau.csv
+    bureau_balance: bureau_balance.csv
+    installments: installments_payments.csv
+    pos_cash: POS_CASH_balance.csv
+    credit_card: credit_card_balance.csv
+    previous: previous_application.csv
+
+split:
+  # Step 1: full population -> (dev, oot) 75:25, stratified on TARGET.
+  oot_frac: 0.25
+  # Step 2: dev -> (train, test) 75:25, stratified on TARGET.
+  test_frac_of_dev: 0.25
+
+sample:
+  # Used only when --sample is passed. Stratified on TARGET at customer level, before splitting.
+  default_frac: 0.10
+
+features:
+  iv_min: 0.02
+  iv_suspicious: 0.50        # IV above this is flagged for possible leakage
+  corr_max: 0.70
+  vif_max: 5.0
+  csi_max: 0.10              # train vs test characteristic stability
+
+model:
+  scorecard:
+    pdo: 20
+    base_score: 600
+    base_odds: 50            # good:bad odds at base_score
+  lightgbm:
+    n_estimators: 500
+    learning_rate: 0.03
+    num_leaves: 31
+    min_child_samples: 100
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.7
+    reg_lambda: 1.0
+  master_scale:
+    # Upper PD bounds of grades 1..10; grade D (default) is assigned outside the model.
+    pd_upper_bounds: [0.005, 0.01, 0.02, 0.035, 0.05, 0.075, 0.10, 0.15, 0.25, 1.0]

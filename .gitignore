@@ -1,0 +1,23 @@
+# Data and outputs: never commit
+data/
+outputs/
+*.parquet
+*.csv
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# OS
+.DS_Store

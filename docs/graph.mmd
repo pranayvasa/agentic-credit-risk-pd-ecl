@@ -1,0 +1,52 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	setup(setup)
+	ingest_dq(ingest_dq)
+	split(split)
+	leg_application(leg_application)
+	leg_bureau(leg_bureau)
+	leg_behavioural(leg_behavioural)
+	leg_previous(leg_previous)
+	select(select)
+	model(model)
+	validate(validate)
+	ecl(ecl)
+	critic(critic)
+	run_extra_analyses(run_extra_analyses)
+	document(document)
+	grounding_check(grounding_check)
+	assemble_report(assemble_report)
+	halt(halt)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> setup;
+	critic -.-> document;
+	critic -.-> run_extra_analyses;
+	document --> grounding_check;
+	ecl --> critic;
+	grounding_check --> assemble_report;
+	ingest_dq -.-> halt;
+	ingest_dq -.-> split;
+	leg_application --> select;
+	leg_behavioural --> select;
+	leg_bureau --> select;
+	leg_previous --> select;
+	model --> validate;
+	run_extra_analyses --> critic;
+	select --> model;
+	setup --> ingest_dq;
+	split --> leg_application;
+	split --> leg_behavioural;
+	split --> leg_bureau;
+	split --> leg_previous;
+	validate -.-> ecl;
+	validate -.-> halt;
+	assemble_report --> __end__;
+	halt --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
