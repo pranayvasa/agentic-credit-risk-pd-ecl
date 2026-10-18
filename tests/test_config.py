@@ -44,3 +44,11 @@ def test_critic_bound_cannot_exceed_two():
     d["llm"]["max_critic_iterations"] = 5
     with pytest.raises(ValidationError):
         AppConfig.model_validate(d)
+
+
+def test_gemini_models_have_cost_rates():
+    llm = load_config().llm
+    assert llm.gemini.test_model == "gemini-3.5-flash-lite"
+    assert llm.gemini.final_model == "gemini-3.6-flash"
+    for m in (llm.gemini.test_model, llm.gemini.final_model):
+        assert m in llm.cost_per_million

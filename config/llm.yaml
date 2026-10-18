@@ -4,8 +4,9 @@ max_critic_iterations: 2
 
 gemini:
   # Model IDs verified against https://ai.google.dev/gemini-api/docs/models on 2026-10-18.
-  test_model: gemini-3.1-flash-lite
-  final_model: gemini-3.1-pro-preview
+  # Both are stable models already in use in the author's other projects.
+  test_model: gemini-3.5-flash-lite
+  final_model: gemini-3.6-flash
   use: test                    # test | final
   temperature: 0.2
 
@@ -16,7 +17,8 @@ ollama:
 # USD per 1M tokens, paid tier, prompts <= 200k tokens.
 # Source: https://ai.google.dev/gemini-api/docs/pricing, checked 2026-10-18.
 cost_per_million:
-  gemini-3.1-flash-lite: {input: 0.25, output: 1.50}
-  gemini-3.1-pro-preview: {input: 2.00, output: 12.00}
+  gemini-3.5-flash-lite: {input: 0.30, output: 2.50}
+  # gemini-3.6-flash rises to {input: 1.50, output: 7.50} from 2027-01-01; update this before any 2027 run.
+  gemini-3.6-flash: {input: 0.75, output: 3.75}
   dry-run: {input: 0.0, output: 0.0}
   ollama: {input: 0.0, output: 0.0}
