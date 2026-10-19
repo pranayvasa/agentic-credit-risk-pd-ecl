@@ -36,7 +36,8 @@ RULES = [
          r"rank[- ]order\w*[^.]*\b(strong|consistent|robust|monoton\w*|preserved|intact|clean)\b"),
     Rule("temporal stability claimed while testing is pseudo-OOT",
          _has_finding("Stability testing is not temporal"),
-         r"\b(temporal(ly)? (stab\w+|validat\w+|robust\w*|tested)|stable over time|proven over time|validated over time)\b"),
+         r"\b(temporally (stable|validated|robust|tested)|stable over time|proven over time|validated over time|"
+         r"(demonstrat\w*|confirm\w*|establish\w*|prove[sn]?|shows?|evidenc\w*|pass\w*)\b[^.]*\btemporal (stability|validation|robustness))\b"),
     Rule("external scores described as documented or validated",
          _has_finding("Champion uses undisclosed external scores"),
          r"external (credit )?scores?[^.]*\b(are|is|were|was|have been|has been) (fully )?(documented|disclosed|validated|transparent)\b"),

@@ -141,13 +141,15 @@ PHRASES = [
     (r"loss given default", "lgd"), (r"expected credit loss", "ecl"),
     (r"exposure at default", "ead"), (r"kolmogorov[- ]smirnov", "ks"),
     (r"\bbenchmark\b", "challenger"), (r"application_test|application test", "external"),
-    (r"\bleads? by\b", "lead"), (r"constant[- ]hazard", "hazard"),
+    (r"\bleads? by\b", "lead"), (r"\bdifference\b", "lead"),
+    (r"constant[- ]hazard", "hazard"),
 ]  # fmt: skip
 PATH_PHRASES = [("pd_to_dr", "pdtodr"), ("default_rate", "defaultrate"), ("p_value", "pvalue"),
                 ("constant_hazard", "hazard"), ("champion_lead", "lead")]  # fmt: skip
 MEASURES = {"gini", "auc", "ks", "psi", "csi", "ece", "slope", "intercept", "hl", "pvalue",
             "brier", "iv", "lgd", "ecl", "ead", "coverage", "pdtodr", "defaultrate", "lead",
             "scalar", "weight", "spearman", "overlap", "hhi"}  # fmt: skip
+LABEL_WINDOW = 8  # a label is the few words just before the number
 QUALIFIERS = {"champion", "challenger", "scorecard", "lightgbm", "external", "stress", "train",
               "test", "oot", "before", "after", "upside", "downside", "base", "markov", "hazard"}  # fmt: skip
 
@@ -175,18 +177,23 @@ def leaf_tokens(path: str) -> set[str]:
 def _label_words(line: str, prev_end: int, start: int) -> list[str]:
     seg = re.sub(r"\([^()]*\)", " ", line[prev_end:start])  # closed asides are not labels
     seg = re.split(r"[.;!?:,](?:\s|$)|[()]", seg)[-1]
-    return re.findall(r"[a-z0-9]+", _canon(seg))
+    return re.findall(r"[a-z0-9]+", _canon(seg))[-LABEL_WINDOW:]
+
+
+def _close(x: np.ndarray, v: float, d: int) -> np.ndarray:
+    """Equal at the shown precision: rounded, or truncated (a formatting slip, not an invention)."""
+    unit = 10.0**-d
+    return (np.abs(x - v) <= 0.5 * unit + 1e-12) | ((x - v >= -1e-12) & (x - v < unit))
 
 
 def _value_matches(t: Token, values: np.ndarray) -> np.ndarray:
     d, v = t.decimals, t.value
-    half = 0.5 * 10.0**-d + 1e-12
     vals = np.abs(values)
     if t.unit == "%":
-        return (np.abs(vals * 100 - v) <= half) | (np.abs(vals - v) <= half)
+        return _close(vals * 100, v, d) | _close(vals, v, d)
     if t.unit in SCALES:
-        return np.abs(vals / SCALES[t.unit] - v) <= half
-    return (np.abs(vals - v) <= half) | (np.abs(vals * 100 - v) <= half)
+        return _close(vals / SCALES[t.unit], v, d)
+    return _close(vals, v, d) | _close(vals * 100, v, d)
 
 
 def check_labelled(text: str, labelled: list[tuple[str, float]]) -> Report:
@@ -212,6 +219,8 @@ def check_labelled(text: str, labelled: list[tuple[str, float]]) -> Report:
             elif prose and (t.decimals > 0 or t.unit == "%"):
                 words = _label_words(line, prev_end, m.start())
                 measures = {w for w in words if w in MEASURES}
+                if "lead" in measures:  # a difference names the gap, not the metric it is a gap in
+                    measures = {"lead"}
                 if measures:
                     cand = np.array([bool(measures & lt) for lt in ltoks])
                     quals = set(words) & QUALIFIERS

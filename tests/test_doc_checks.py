@@ -52,6 +52,19 @@ def test_invented_number_is_unverified_and_tables_skip_label_check():
     assert _status("| challenger PD PSI | 0.0152 |") == ["verified"]
 
 
+def test_tuned_label_rules_from_the_second_gemini_run():
+    # "difference" names the lead, not the champion's own Gini.
+    assert _status("The challenger minus champion difference in Gini is -0.0594.") == ["verified"]
+    # A measure word far back in the sentence is not this number's label.
+    assert _status("Rates for the PSI framework are derived with implied rates of 0.0152.") == [
+        "verified"
+    ]
+    # Truncation is a formatting slip, not an invention; a 10x error is still caught.
+    assert _status("The champion OOT Gini is 0.5602, AUC 0.7801.") == ["verified", "verified"]
+    assert _status("The champion leads by 0.0593 Gini.") == ["verified"]  # 0.059396 truncated
+    assert _status("A challenger_pd_psi of 0.0175.") == ["unverified"]
+
+
 FACTS = {"findings": {"list": [{"title": "Rank-ordering breaks across PD deciles (OOT)"},
                                {"title": "Stability testing is not temporal (pseudo-OOT)"}]}}  # fmt: skip
 
@@ -61,6 +74,8 @@ FACTS = {"findings": {"list": [{"title": "Rank-ordering breaks across PD deciles
     ("Rank-ordering is consistent apart from one break across deciles.", 0),
     ("The model is temporally stable.", 1),
     ("Temporal stability remains untested.", 0),
+    ("The OOT results demonstrate temporal stability.", 1),
+    ("Use is contingent on addressing temporal stability testing.", 0),
 ])  # fmt: skip
 def test_contradictions_against_findings(sentence, n):
     assert len(consistency.check(sentence, FACTS, [], [])) == n
