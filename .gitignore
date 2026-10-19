@@ -24,3 +24,6 @@ dist/
 
 # Generated notebook exports (rebuild with jupyter nbconvert)
 notebooks/*.html
+
+# Executed beginner notebook (shows raw Kaggle rows; never commit)
+notebooks/local/

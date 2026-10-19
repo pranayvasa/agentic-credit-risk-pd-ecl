@@ -232,6 +232,8 @@ From run `20261019T041619Z_full_21f3ba7a1ecd` (full population, dry-run LLM mode
 * *Stability.* PSI is near zero **by construction**, because the OOT is a random holdout. The stress ladder shows how large a mix shift the metric needs before it reacts.
 * *External scores.* Without EXT_SOURCE_1/2/3 the champion falls below the gate. See [the sensitivity analysis](docs/sensitivity_ext_source.md).
 
+New to the code? [notebooks/credit_risk_explained.ipynb](notebooks/credit_risk_explained.ipynb) rebuilds every step in plain Python (data, split, features, WoE, scorecard, LightGBM, validation and one loan's ECL by hand), checking each number against the pipeline. It is committed without outputs; run it locally after `acr run`.
+
 Sample generated documents from this run: [Model Development Document](docs/sample_outputs/model_development.md) · [Independent Validation Report](docs/sample_outputs/independent_validation.md) · [Ongoing Monitoring Plan](docs/sample_outputs/ongoing_monitoring.md) · [ECL Methodology Note](docs/sample_outputs/ecl_methodology.md) · [Grounding report](docs/sample_outputs/grounding_report.md)
 
 ## Validation findings
@@ -339,8 +341,9 @@ src/acr/
   tuning.py      offline train-only CV tuning
 tests/           147 tests on a synthetic Home Credit-shaped dataset
 docs/            PROJECT_BRIEF · DECISIONS (D1–D31) · DATA · sensitivity_ext_source · graph.mmd · sample_outputs/
-notebooks/       pipeline_walkthrough.ipynb (code walkthrough)
-scripts/         fill_readme.py · build_walkthrough.py
+notebooks/       credit_risk_explained.ipynb (beginner, plain-Python rebuild of every step, checked against the pipeline)
+                 pipeline_walkthrough.ipynb (source-code walkthrough)
+scripts/         fill_readme.py · build_explained.py · build_walkthrough.py
 ```
 
 Every design choice that refines or departs from the original brief is recorded with its reason in [docs/DECISIONS.md](docs/DECISIONS.md).
