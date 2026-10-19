@@ -93,7 +93,12 @@ def select_features(features: pd.DataFrame, dictionary: pd.DataFrame, assignment
     for f in d.index[d["role"] != "candidate"]:
         log.append({"feature": f, "stage": "role", "reason": f"role is {d.loc[f, 'role']} "
                     "(protected characteristic)", "value": None})  # fmt: skip
-    cands = [f for f in d.index[d["role"] == "candidate"] if f in features.columns]
+    excluded = set(cfg.exclude_features)
+    for f in sorted(excluded & set(d.index)):
+        log.append({"feature": f, "stage": "config", "reason": "excluded by config "
+                    "(features.exclude_features)", "value": None})  # fmt: skip
+    cands = [f for f in d.index[d["role"] == "candidate"]
+             if f in features.columns and f not in excluded]  # fmt: skip
     categorical = [f for f in cands if d.loc[f, "kind"] == "categorical"]
 
     miss = Xtr[cands].isna().mean()

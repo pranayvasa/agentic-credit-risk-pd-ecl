@@ -282,7 +282,7 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             f"EXT_SOURCE features contribute {share:.0%} of the scorecard's points range "
             f"(threshold {v.external_score_share_max:.0%}); their provider and construction are "
             "not disclosed.",
-            "Obtain documentation of the external scores, or assess performance without them.",
+            "Obtain documentation of the external scores. Without them OOT Gini falls from about 0.50 to 0.40 and the gate fails (docs/sensitivity_ext_source.md).",
         )
 
     add(

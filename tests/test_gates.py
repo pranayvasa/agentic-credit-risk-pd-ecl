@@ -23,6 +23,11 @@ def test_dq_halt_routes_to_halt_node(init_state, monkeypatch):
     assert "split" not in final
     ended = [e["node"] for e in read_events(final["run_dir"]) if e["event"] == "node_end"]
     assert "split" not in ended and ended[-1] == "halt"
+    import json
+    from pathlib import Path
+
+    summary = json.loads((Path(final["run_dir"]) / "run_summary.json").read_text())
+    assert summary["status"] == "halted" and "duplicate IDs" in summary["halt_reason"]
 
 
 def test_validation_halt_routes_to_halt_node(init_state, monkeypatch):

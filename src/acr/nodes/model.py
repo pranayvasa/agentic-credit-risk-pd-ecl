@@ -84,7 +84,8 @@ def model(view):
     pd_proxy = proxy.predict_pd(W)
 
     # --- challenger ---
-    cands = [f for f in meta["candidates"] if f in live]
+    excluded = set(c.base.features.exclude_features)
+    cands = [f for f in meta["candidates"] if f in live and f not in excluded]
     Xtr = require_partition(features.loc[train_ids, cands], a.reset_index(), "train")
     lgbm = C.fit_challenger(Xtr, ytr, cat_live, dict(m.lightgbm), m.lightgbm_fit, seed)
     n_trees = int(lgbm.n_estimators)

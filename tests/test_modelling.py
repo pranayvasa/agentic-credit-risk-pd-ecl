@@ -182,3 +182,23 @@ def test_metric_sanity():
     assert psi(same, same) == pytest.approx(0.0, abs=1e-12)
     shifted = pd.Series(np.r_[np.zeros(8000), np.ones(2000)])
     assert psi(same.clip(0, 1), shifted) > 0.25
+
+
+def test_excluded_features_never_reach_either_model(init_state):
+    import lightgbm as lgb
+
+    ext = ["APP_EXT_SOURCE_1", "APP_EXT_SOURCE_2", "APP_EXT_SOURCE_3", "APP_EXT_SOURCE_MEAN",
+           "APP_EXT_SOURCE_MIN", "APP_EXT_SOURCE_MISSING_COUNT"]  # fmt: skip
+    state = init_state(sample_frac=None)
+    state["config"]["base"]["features"]["exclude_features"] = ext
+    final = build_graph().invoke(state, {"recursion_limit": 60})
+    ex = pd.read_csv(final["selection"]["paths"]["exclusions"])
+    assert set(ex.loc[ex["stage"] == "config", "feature"]) == set(ext)
+    assert not {s["feature"] for s in final["selection"]["selected"]} & set(ext)
+    assert not set(final["model"]["origination_proxy"]["features"]) & set(ext)
+    booster = lgb.Booster(model_file=final["model"]["paths"]["challenger"])
+    assert not set(booster.feature_name()) & set(ext)
+
+
+def test_exclude_list_defaults_to_empty():
+    assert load_config().base.features.exclude_features == []

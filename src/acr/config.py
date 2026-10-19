@@ -78,6 +78,7 @@ class FeatureCfg(_Strict):
     corr_max: float
     vif_max: float
     csi_max: float
+    exclude_features: list[str] = []
 
 
 class ScorecardCfg(_Strict):

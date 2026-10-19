@@ -47,6 +47,7 @@ features:
   # Fitted on train only. Test is used only for the CSI stability screen (D8).
   min_bin_size: 0.05         # each WoE bin holds at least 5% of train
   max_n_bins: 6              # tuned (D22)
+  exclude_features: []       # removed from scorecard and challenger candidates (sensitivity runs)
   missing_max: 0.95          # exclude candidates missing for more than 95% of train
   max_features: 15           # scorecard size cap after pruning, ranked by IV (hard limit 15; tuned, D22)
   p_value_max: 0.05          # backward elimination on the WoE logistic regression

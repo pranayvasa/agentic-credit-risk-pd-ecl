@@ -24,6 +24,11 @@ def _run(args: argparse.Namespace) -> int:
                 )
             }
         )
+    if args.exclude_features:
+        feats = cfg.base.features.model_copy(
+            update={"exclude_features": [f.strip() for f in args.exclude_features.split(",")]}
+        )
+        cfg = cfg.model_copy(update={"base": cfg.base.model_copy(update={"features": feats})})
     sample = None
     if args.sample is not None:
         sample = args.sample if args.sample > 0 else cfg.base.sample.default_frac
@@ -117,6 +122,11 @@ def main(argv: list[str] | None = None) -> int:
         choices=["test", "final"],
         default=None,
         help="which configured Gemini model to use",
+    )
+    r.add_argument(
+        "--exclude-features",
+        default=None,
+        help="comma-separated features to drop from both models (sensitivity runs)",
     )
     r.set_defaults(func=_run)
 
