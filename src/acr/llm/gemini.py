@@ -15,7 +15,7 @@ class GeminiProvider:
         self.temperature = temperature
         self._client = genai.Client()  # reads GEMINI_API_KEY from the environment
 
-    def generate(self, prompt: str, *, task: str) -> LLMResponse:
+    def generate(self, prompt: str, *, task: str, context: dict | None = None) -> LLMResponse:
         from google.genai import types
 
         resp = self._client.models.generate_content(

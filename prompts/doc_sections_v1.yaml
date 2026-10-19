@@ -1,0 +1,337 @@
+# Documentation spec, version v1. Four documents, written section by section.
+#
+# For each section:
+#   guidance  what the LLM documentation agent is asked to write (prose only; no tables)
+#   template  the dry-run text. {path:fmt} placeholders are filled from the run's facts
+#             (format spec as in Python, plus "m1" = millions with 1 decimal).
+#   tables    deterministic tables rendered by code from the facts and appended after the prose
+#
+# Structure follows SR 11-7 (model development, validation, ongoing monitoring), the RBI ECL
+# Directions 2026 (RBI/DOR/2026-27/398) and the RBI draft MRM guidance (June 2026, draft).
+
+documents:
+  model_development:
+    title: Model Development Document — PD scorecard
+    purpose: First-line documentation of the PD model's purpose, data, methodology, performance and limitations.
+    sections:
+      - id: purpose
+        title: Purpose and intended use
+        guidance: >-
+          State the model's purpose (12-month-equivalent probability of default for unsecured
+          retail applicants), intended use (application decisioning support and as the PD input to an
+          illustrative ECL calculation), and that this is a portfolio demonstration on public data.
+          Name the champion and challenger.
+        template: >-
+          The model estimates a 12-month-equivalent probability of default (PD) for unsecured retail
+          loan applicants, using the public Home Credit Default Risk data. It supports application
+          decisioning and supplies the PD input to an illustrative RBI ECL calculation. The champion is
+          a {champion.n_features}-variable weight-of-evidence (WoE) logistic regression scorecard; the
+          challenger is a LightGBM gradient-boosting model on {challenger.n_features} candidate
+          features. This is a portfolio demonstration on public data, not a production model.
+        tables: []
+      - id: data
+        title: Data
+        guidance: >-
+          Describe the seven source tables, the population and default rate, the target definition
+          (payment difficulties, not 90+ DPD), and the split design including that the OOT holdout
+          is a random (pseudo) holdout because the data has no application dates. Mention the
+          unlabelled application_test population.
+        template: >-
+          The development population is {data.applicants:,} applications with a default rate of
+          {data.default_rate:.2%}. TARGET flags payment difficulties on early instalments; it is not the
+          regulatory 90+ DPD definition. Applicants were split on customer ID before any data-learned
+          step: {split.design_pct.dev:.0f}:{split.design_pct.oot:.0f} into development and out-of-time
+          (OOT), then development {split.design_pct.train_of_dev:.0f}:{split.design_pct.test_of_dev:.0f}
+          into train and test, stratified on TARGET with seed {run.seed}. The OOT holdout is a random
+          (pseudo-OOT) holdout because the data carries no application dates, so it cannot evidence
+          temporal stability. A further {data.external_applicants:,} unlabelled applicants
+          (application_test) are scored only for a distributional stability check.
+        tables: [data_table, split_table]
+      - id: methodology
+        title: Methodology
+        guidance: >-
+          Explain the four data legs, optimal monotonic WoE binning fitted on train only, the WoE
+          logistic scorecard with PDO points scaling, the LightGBM challenger with fixed
+          hyperparameters, the calibration decision, the master scale and the application-only
+          origination-proxy scorecard used for ECL staging. Stress that no LLM fits or tunes models.
+        template: >-
+          Features come from four legs aggregated to one row per customer: application, bureau,
+          behavioural (prior Home Credit repayments) and previous applications. Each continuous or
+          categorical feature is grouped into monotonic optimal bins fitted on train only, and replaced by
+          its weight of evidence. The champion is a logistic regression on WoE features with points scaled
+          at {champion.scaling.pdo:.0f} points to double the odds and a base score of
+          {champion.scaling.base_score:.0f} at {champion.scaling.base_odds:.0f}:1 odds. The challenger is
+          LightGBM with depth {challenger.params.max_depth}, {challenger.params.num_leaves} leaves and at
+          least {challenger.params.min_child_samples:,} observations per leaf, fixed in configuration
+          after offline train-only cross-validation. Calibration was assessed on out-of-fold train
+          predictions: {champion.calibration_decision}. PDs map to a 10-grade master scale. An
+          application-only scorecard serves as an origination-PD proxy for ECL staging. No language
+          model fits, tunes or alters any model.
+        tables: []
+      - id: selection
+        title: Feature selection
+        guidance: >-
+          Describe the selection funnel (missingness, single-bin, IV bounds, CSI, correlation, VIF,
+          the cap, backward elimination on sign and p-value), that protected characteristics are
+          excluded, and summarise the selected features by leg.
+        template: >-
+          Of {features.total} engineered features, {features.candidates} were candidates (gender and
+          marital status are protected characteristics kept for fairness analysis only). Screens on
+          missingness, binning, information value (minimum {thresholds.iv_min}, leakage flag above
+          {thresholds.iv_suspicious}) and train-vs-test stability left {features.screened}. Correlation
+          (above {thresholds.corr_max}), VIF (above {thresholds.vif_max:.0f}), a cap of
+          {thresholds.max_features} variables and backward elimination on coefficient sign and p-value
+          (above {thresholds.p_value_max}) gave the final {features.selected} variables.
+        tables: [selection_funnel_table, selected_features_table]
+      - id: performance
+        title: Performance
+        guidance: >-
+          Summarise discrimination (Gini and AUC on train, test and OOT for both models), the absence
+          of overfitting in the champion, calibration, and the challenger gap. Report Gini with AUC.
+        template: >-
+          The champion achieves OOT Gini {champion.performance.oot.gini:.4f} (AUC
+          {champion.performance.oot.auc:.4f}) against {champion.performance.train.gini:.4f} on train, so
+          there is no material overfitting. OOT calibration is close: decile ECE
+          {champion.calibration_oot.ece:.4f} and calibration slope {champion.calibration_oot.slope:.3f}.
+          The challenger reaches OOT Gini {challenger.performance.oot.gini:.4f} (AUC
+          {challenger.performance.oot.auc:.4f}), {comparison.diff:.4f} higher than the champion.
+        tables: [performance_table, calibration_table]
+      - id: limitations
+        title: Assumptions and limitations
+        guidance: >-
+          List the key limitations honestly: pseudo-OOT, target definition, dependence on undisclosed
+          external scores, application-level data with no origination PD, and the illustrative ECL.
+        template: >-
+          Key limitations: (1) the OOT holdout is random, so temporal stability is untested; (2) the
+          target is payment difficulty, not 90+ DPD; (3) undisclosed external scores carry
+          {external_score_share:.0%} of the scorecard's points range, and without them OOT Gini falls
+          below the gate (see the external-score sensitivity); (4) the data has no origination-date PD,
+          so ECL staging uses a proxy; (5) the ECL calculation is an illustrative simulation on a
+          pseudo-book, not a portfolio provision.
+        tables: []
+      - id: governance
+        title: Governance and reproducibility
+        guidance: >-
+          Describe controls: fixed seed and versioned config hash, train-only fitting with leakage
+          guards, the JSONL audit trail, the read-only validator with checksums, and that LLM agents
+          only critique and document.
+        template: >-
+          Run {run.run_id} used seed {run.seed} and configuration hash {run.config_hash}; the same
+          inputs reproduce the same numbers. Every fitting step is guarded to accept train rows only.
+          Each graph node logs its inputs, outputs, gate decisions and timings to an audit trail. The
+          independent validator works on saved outputs only and verifies model artefact checksums. LLM
+          agents critique and document; they cannot change model parameters.
+        tables: []
+
+  independent_validation:
+    title: Independent Validation Report — PD scorecard
+    purpose: Second-line review of conceptual soundness, outcomes, stability and benchmarking, with findings.
+    sections:
+      - id: scope
+        title: Scope and independence
+        guidance: >-
+          State what was validated, that validation used saved outputs only (read-only, checksum
+          verified), and the gate outcome.
+        template: >-
+          This report covers the champion scorecard and the challenger. The validator read saved outputs
+          only, verified the checksums of every model artefact before and after its work, and imported no
+          fitting code. Gate outcome: {findings.gate_decision}. Findings: {findings.by_severity.red} red,
+          {findings.by_severity.high} high, {findings.by_severity.medium} medium and
+          {findings.by_severity.low} low.
+        tables: []
+      - id: conceptual
+        title: Conceptual soundness
+        guidance: >-
+          Assess the design: scorecard method, train-only fitting, protected attributes excluded,
+          target definition gap, external score dependence.
+        template: >-
+          The WoE scorecard is a well-understood, interpretable method, and all learned steps were fitted
+          on train only. Protected characteristics are excluded from the model. Two conceptual concerns
+          remain: the target is not the regulatory default definition, and external scores of unknown
+          construction account for {external_score_share:.0%} of the points range.
+        tables: []
+      - id: outcomes
+        title: Outcomes analysis
+        guidance: >-
+          Discuss discrimination by partition, calibration at portfolio and grade level (binomial
+          traffic lights), and rank-ordering.
+        template: >-
+          On OOT the champion's Gini is {champion.performance.oot.gini:.4f} (AUC
+          {champion.performance.oot.auc:.4f}) and KS {champion.performance.oot.ks:.4f}. Mean PD
+          {champion.performance.oot.mean_pd:.2%} matches the observed default rate
+          {champion.performance.oot.default_rate:.2%}. The Hosmer-Lemeshow p-value is
+          {champion.calibration_oot.hl_p_value:.4f}. Grade-level binomial tests are shown below; default
+          rates rise across grades with {champion.rank_breaks_grade_oot} rank-order break(s).
+        tables: [performance_table, grade_table]
+      - id: stability
+        title: Stability
+        guidance: >-
+          Explain that PSI/CSI are near zero by construction on the pseudo-OOT, show the stress ladder
+          and the external-population check, and state what remains untested.
+        template: >-
+          Score PSI is {stability.score_psi.train_vs_oot:.4f} on OOT and the largest feature CSI is
+          {stability.csi_max:.4f}, as expected for a random holdout. A stress ladder that up-weights
+          applicants under 30 gives PSI {stability.stress_psi.under30_x3:.4f}, {stability.stress_psi.under30_x10:.4f}
+          and {stability.stress_psi.under30_x50:.4f}, so score PSI only reacts to large shifts. The
+          unlabelled application_test population ({stability.external.n:,} applicants) has score PSI
+          {stability.external.score_psi:.4f}. Temporal stability remains untested.
+        tables: [stability_table]
+      - id: benchmarking
+        title: Benchmarking against the challenger
+        guidance: >-
+          Compare champion and challenger with the bootstrap confidence interval, and discuss the
+          challenger's overfitting and the interpretability trade-off.
+        template: >-
+          The challenger outperforms the champion on OOT by {comparison.diff:.4f} Gini (AUC
+          {comparison.auc_diff:.4f}), with a 95% bootstrap interval of {comparison.ci_low:.4f} to
+          {comparison.ci_high:.4f}. Its train Gini of {challenger.performance.train.gini:.4f} against OOT
+          {challenger.performance.oot.gini:.4f} shows it overfits more than the champion. The scorecard
+          is retained for interpretability; the gap is recorded as a finding.
+        tables: [comparison_table]
+      - id: findings
+        title: Findings and remediation
+        guidance: >-
+          Introduce the findings table; do not restate every finding. Highlight the most material ones.
+        template: >-
+          Findings are generated by deterministic rules with thresholds stated in each finding. The table
+          lists all of them; the details and remediation follow.
+        tables: [findings_table, findings_detail]
+      - id: critic
+        title: Challenge by the critic agent
+        guidance: >-
+          Summarise the critic agent's challenges and what the requested analyses showed.
+        template: >-
+          An LLM critic agent reviewed the validation and ECL summaries as a skeptical second-line
+          reviewer. It may request only whitelisted deterministic analyses; its challenges and the
+          results of its requests are listed below. It cannot change the model.
+        tables: [critic_table]
+      - id: conclusion
+        title: Conclusion
+        guidance: >-
+          Give an overall opinion with conditions, consistent with the gate outcome and findings.
+        template: >-
+          The champion passes the performance gates with OOT Gini {champion.performance.oot.gini:.4f}
+          against a minimum of {thresholds.gini_min_oot}, and is well calibrated. It is fit for its
+          demonstration purpose, subject to the medium findings, in particular re-validation on a true
+          out-of-time sample and documentation of the external scores.
+        tables: []
+
+  ongoing_monitoring:
+    title: Ongoing Monitoring Plan — PD scorecard
+    purpose: Metrics, thresholds, frequency, triggers and escalation for the model in use.
+    sections:
+      - id: objectives
+        title: Objectives
+        guidance: State what monitoring must detect (discrimination decay, calibration drift, population shift, input failure).
+        template: >-
+          Monitoring must detect loss of discrimination, calibration drift, population shift and failure
+          of model inputs, in particular the external scores, before they affect lending decisions or
+          provisions.
+        tables: []
+      - id: metrics
+        title: Metrics and thresholds
+        guidance: List the metrics and their amber and red thresholds; the table carries the values.
+        template: >-
+          Thresholds are the same as those used at validation, so monitoring results are directly
+          comparable with the validated baseline (OOT Gini {champion.performance.oot.gini:.4f}).
+        tables: [monitoring_table]
+      - id: frequency
+        title: Frequency and triggers
+        guidance: Describe monthly, quarterly and annual cadence and the triggers for review.
+        template: >-
+          Population stability and characteristic stability are reviewed monthly. Discrimination and
+          calibration are reviewed quarterly once outcomes mature. A full revalidation is required
+          annually, or immediately on any red result, a change in the external score provider, or a
+          material change in product or policy.
+        tables: []
+      - id: escalation
+        title: Escalation
+        guidance: Describe who is informed and what happens at amber and red.
+        template: >-
+          Amber results are reported to the model owner with an action plan. Red results are escalated
+          to the model risk committee; use of the model is restricted or an overlay applied until the
+          issue is resolved.
+        tables: []
+      - id: known_issues
+        title: Known weaknesses to watch
+        guidance: List the medium and above findings from validation as monitoring priorities.
+        template: >-
+          The validation findings below set the monitoring priorities.
+        tables: [findings_table]
+
+  ecl_methodology:
+    title: ECL Methodology Note — illustrative RBI ECL
+    purpose: Staging, lifetime PD, scenarios, LGD and EAD, results and limitations (illustrative simulation).
+    sections:
+      - id: status
+        title: Scope and status
+        guidance: >-
+          State clearly that this is an illustrative simulation on a pseudo-book under RBI/DOR/2026-27/398,
+          and describe the book.
+        template: >-
+          This note describes an illustrative ECL simulation under the RBI Directions RBI/DOR/2026-27/398.
+          Home Credit is application-level data, so the OOT holdout ({ecl.book.accounts:,} loans, exposure
+          {ecl.book.ead_total:m1}) is treated as a book at a simulated reporting date with every loan at
+          origination. Results do not represent any institution's provisions.
+        tables: [ecl_assumptions_table]
+      - id: staging
+        title: Staging
+        guidance: Explain Stage 1/2/3 rules, the 30 DPD presumption, the relative SICR proxy and the realised outcomes by stage.
+        template: >-
+          Stage 3 applies to borrowers more than {ecl.staging_rules.credit_impaired_dpd} days past due on
+          prior Home Credit loans in the last {ecl.staging_rules.lookback_months} months. Stage 2 applies
+          on the rebuttable presumption of more than {ecl.staging_rules.sicr_dpd_presumption} days past
+          due (Home Credit or bureau), or on relative deterioration against an application-only
+          origination proxy: a downgrade of at least {ecl.staging_rules.sicr_grade_notches} grades, or a
+          PD at least {ecl.staging_rules.sicr_pd_ratio:.0f} times the proxy and above
+          {ecl.staging_rules.sicr_abs_pd_min:.0%}. Realised default rates rise from
+          {ecl.by_stage.stage_1.realised_default_rate:.2%} in Stage 1 to
+          {ecl.by_stage.stage_2.realised_default_rate:.2%} in Stage 2 and
+          {ecl.by_stage.stage_3.realised_default_rate:.2%} in Stage 3.
+        tables: [staging_table]
+      - id: pd
+        title: 12-month and lifetime PD
+        guidance: Explain the PD floor, constant hazard, the Markov alternative and the comparison.
+        template: >-
+          The 12-month PD is the champion PD, floored at {ecl.assumptions.pd_floor_12m:.2%}. Lifetime PD
+          uses a constant monthly hazard. An alternative scales a monthly DPD transition chain estimated
+          from bureau history to the same 12-month PD; it changes total ECL from
+          {ecl.lifetime_methods.constant_hazard.ecl_weighted:m1} to
+          {ecl.lifetime_methods.markov.ecl_weighted:m1}.
+        tables: [lifetime_table]
+      - id: ead_lgd
+        title: EAD, EIR and LGD
+        guidance: Explain the implied rate and term derivation, the amortising EAD, discounting at the EIR, revolving treatment and the LGD backstop.
+        template: >-
+          Term and rate cannot both be derived from credit and annuity amounts, so the monthly rate per
+          contract type is the rate implied by approved prior Home Credit loans, and each loan's term is
+          solved from the annuity formula. Exposure follows the amortising balance and cash flows are
+          discounted at that rate. Revolving loans use a {ecl.revolving.life_months}-month life. LGD is
+          the {ecl.assumptions.lgd_base:.0%} backstop for unsecured exposures.
+        tables: [lgd_table]
+      - id: scenarios
+        title: Forward-looking scenarios
+        guidance: Describe the three scenarios, their weights and PD scalars, and the weighted result.
+        template: >-
+          Three illustrative scenarios scale the 12-month PD; staging is held constant. The
+          probability-weighted model ECL is {ecl.by_stage.total.ecl_model:m1}.
+        tables: [scenario_table]
+      - id: results
+        title: Results
+        guidance: Report ECL and coverage by stage, the effect of RBI floors, and the QC checks.
+        template: >-
+          Final ECL after RBI minimum provisions is {ecl.by_stage.total.ecl_final:m1}, a coverage of
+          {ecl.by_stage.total.coverage_final:.2%} of exposure. Coverage is
+          {ecl.by_stage.stage_1.coverage_final:.2%}, {ecl.by_stage.stage_2.coverage_final:.2%} and
+          {ecl.by_stage.stage_3.coverage_final:.2%} for Stages 1, 2 and 3. Floors add
+          {ecl.floor_uplift:m1}.
+        tables: [ecl_stage_table]
+      - id: limitations
+        title: Limitations
+        guidance: List the ECL-specific limitations.
+        template: >-
+          The book is simulated at origination; staging relies on prior-loan delinquency and an
+          origination proxy; LGD is a regulatory backstop rather than an estimate; scenarios are
+          illustrative; and rates are segment-level, not loan-level. The figures demonstrate the method
+          and must not be read as a provision for any institution.
+        tables: []

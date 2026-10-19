@@ -192,12 +192,18 @@ class TokenRate(_Strict):
     output: float
 
 
+class CostEstimateCfg(_Strict):
+    output_tokens_per_call: dict[str, int]
+    uncertainty: float = Field(ge=0, lt=1)
+
+
 class LLMCfg(_Strict):
     mode: Literal["dry-run", "gemini", "ollama"]
     max_critic_iterations: int = Field(ge=0, le=2)
     gemini: GeminiCfg
     ollama: OllamaCfg
     cost_per_million: dict[str, TokenRate]
+    estimate: CostEstimateCfg
 
 
 class Scenario(_Strict):

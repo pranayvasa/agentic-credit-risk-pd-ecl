@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -44,6 +45,17 @@ def _run(args: argparse.Namespace) -> int:
     for r in final.get("critic_reviews", []):
         tag = "skipped: " + r["reason"] if r.get("skipped") else r.get("conclusion", "")
         print(f"  critic iter {r['iteration']}: {tag}")
+    docs = {k: v for k, v in (final.get("documents") or {}).items() if not k.startswith("_")}
+    if docs and "skipped" not in docs:
+        print(f"  documents: {len(docs)} written to {Path(final['run_dir']) / 'documents'}")
+    elif docs:
+        print(f"  documents: skipped ({docs['skipped']})")
+    g = final.get("grounding") or {}
+    if g.get("status") in ("pass", "flagged"):
+        print(
+            f"  grounding: {g['status']} ({g['totals']['verified']} verified, "
+            f"{g['totals']['unverified']} unverified)"
+        )
     t = report.get("llm_totals")
     if t:
         print(
@@ -63,6 +75,46 @@ def _graph(args: argparse.Namespace) -> int:
     out = REPO_ROOT / "docs" / "graph.mmd"
     out.write_text(text)
     print(text if args.print else f"wrote {out.relative_to(REPO_ROOT)}")
+    return 0
+
+
+def _estimate(args: argparse.Namespace) -> int:
+    """Pre-flight Gemini cost estimate from a dry-run's actual prompts. Makes no API calls."""
+    import json
+
+    from acr.config import resolve_path
+
+    cfg = load_config()
+    runs = resolve_path(cfg.base.paths.outputs_dir)
+    if args.run:
+        src = runs / args.run
+    else:
+        done = sorted(p for p in runs.glob("*_full_*") if (p / "run_summary.json").exists()
+                      and json.loads((p / "run_summary.json").read_text()).get("llm_calls"))  # fmt: skip
+        if not done:
+            print("no completed full dry-run with LLM calls found; run `acr run` first")
+            return 1
+        src = done[-1]
+    calls = json.loads((src / "run_summary.json").read_text())["llm_calls"]
+    est = cfg.llm.estimate
+    tin = sum(c["input_tokens"] for c in calls)
+    tout = sum(
+        max(c["output_tokens"], est.output_tokens_per_call.get(c["node"], 500)) for c in calls
+    )
+    print(
+        f"Estimate from {src.name}: {len(calls)} LLM calls, ~{tin:,} input and ~{tout:,} output tokens"
+    )
+    for label, model in (
+        ("test", cfg.llm.gemini.test_model),
+        ("final", cfg.llm.gemini.final_model),
+    ):
+        r = cfg.llm.cost_per_million[model]
+        cost = (tin * r.input + tout * r.output) / 1e6
+        lo, hi = cost * (1 - est.uncertainty), cost * (1 + est.uncertainty)
+        print(f"  {label:<5} {model:<24} ${cost:.4f}  (range ${lo:.4f} to ${hi:.4f})")
+    print(
+        "No API calls were made. Rates: config/llm.yaml (check Google's pricing page before use)."
+    )
     return 0
 
 
@@ -141,6 +193,12 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--only", choices=["both", "scorecard", "lightgbm"], default="both")
     t.add_argument("--folds", type=int, default=None)
     t.set_defaults(func=_tune)
+
+    e = sub.add_parser(
+        "estimate-cost", help="estimate Gemini cost from a dry-run's prompts (no API calls)"
+    )
+    e.add_argument("--run", default=None, help="source run id (default: latest full run)")
+    e.set_defaults(func=_estimate)
 
     n = sub.add_parser("nodes", help="print every node's declared contract as JSON")
     n.set_defaults(func=_nodes)

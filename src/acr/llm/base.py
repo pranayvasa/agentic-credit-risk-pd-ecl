@@ -29,7 +29,9 @@ class LLMProvider(Protocol):
     name: str
     model: str
 
-    def generate(self, prompt: str, *, task: str) -> LLMResponse: ...
+    def generate(self, prompt: str, *, task: str, context: dict | None = None) -> LLMResponse:
+        """``context`` is the structured payload behind the prompt; real providers ignore it."""
+        ...
 
 
 def load_prompt(name: str, version: str = "v1") -> str:

@@ -22,3 +22,9 @@ cost_per_million:
   gemini-3.6-flash: {input: 0.75, output: 3.75}
   dry-run: {input: 0.0, output: 0.0}
   ollama: {input: 0.0, output: 0.0}
+
+# Pre-flight cost estimate (`acr estimate-cost`): input tokens come from a dry-run's actual
+# prompts; output tokens per call are assumed below (dry-run outputs are shorter than real ones).
+estimate:
+  output_tokens_per_call: {critic: 900, document: 450}
+  uncertainty: 0.30            # report a +/- 30% band: tokenisers and response lengths vary

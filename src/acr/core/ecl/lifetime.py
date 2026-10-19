@@ -42,6 +42,8 @@ def transition_matrix(bb: pd.DataFrame, default_bucket: int) -> pd.DataFrame:
     np.add.at(counts, (state[:-1][same], state[1:][same]), 1)
     counts[default_bucket, :] = 0
     counts[default_bucket, default_bucket] = 1  # default is absorbing
+    unseen = counts.sum(axis=1) == 0
+    counts[unseen, unseen] = 1  # a state never observed stays put rather than producing NaN
     P = counts / counts.sum(axis=1, keepdims=True)
     labels = [str(i) for i in range(default_bucket)] + ["D"]
     return pd.DataFrame(P, index=labels, columns=labels)

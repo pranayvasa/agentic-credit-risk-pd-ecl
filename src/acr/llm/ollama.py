@@ -28,7 +28,7 @@ class OllamaProvider:
         self.host = host
         self.model = model
 
-    def generate(self, prompt: str, *, task: str) -> LLMResponse:
+    def generate(self, prompt: str, *, task: str, context: dict | None = None) -> LLMResponse:
         body = json.dumps({"model": self.model, "prompt": prompt, "stream": False}).encode()
         req = urllib.request.Request(
             f"{self.host}/api/generate", data=body, headers={"Content-Type": "application/json"}

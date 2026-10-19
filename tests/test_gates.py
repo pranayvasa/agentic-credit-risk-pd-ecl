@@ -46,7 +46,13 @@ def test_validation_halt_routes_to_halt_node(init_state, monkeypatch):
 
 def test_critic_loop_is_bounded(init_state, monkeypatch):
     # A critic that always asks for more analysis must still stop after the configured bound.
-    monkeypatch.setitem(dryrun._CANNED, "critic_iter1", dryrun._critic_first)
+    def greedy(iteration, payload):
+        return (
+            '{"challenges": [], "conclusion": "more please", "requests": ['
+            '{"kind": "grade_concentration", "params": {}, "rationale": "again"}]}'
+        )
+
+    monkeypatch.setattr(dryrun, "critic_response", greedy)
     final = build_graph().invoke(init_state(), {"recursion_limit": 60})
     max_rounds = final["config"]["llm"]["max_critic_iterations"]
     assert max_rounds == 2
@@ -61,13 +67,13 @@ def test_critic_loop_is_bounded(init_state, monkeypatch):
 
 
 def test_critic_cannot_request_off_menu_analysis(init_state, monkeypatch):
-    def rogue(_):
+    def rogue(iteration, payload):
         return (
             '{"challenges": [], "conclusion": "x", "requests": ['
             '{"kind": "retune_model", "params": {"C": 10}, "rationale": "better Gini"}]}'
         )
 
-    monkeypatch.setitem(dryrun._CANNED, "critic_iter0", rogue)
+    monkeypatch.setattr(dryrun, "critic_response", rogue)
     final = build_graph().invoke(init_state(), {"recursion_limit": 60})
     assert final["extra_analyses"] == []
     assert final["critic_reviews"][0]["rejected"]
