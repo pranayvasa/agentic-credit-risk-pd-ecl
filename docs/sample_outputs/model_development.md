@@ -1,6 +1,6 @@
 # Model Development Document — PD scorecard
 
-> Run `20261019T055332Z_full_bd0bb86ae168` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
+> Run `20261019T061824Z_full_e1365d46d0f3` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
 
 ## 1. Purpose and intended use
 
@@ -29,7 +29,7 @@ The development population is 307,511 applications with a default rate of 8.07%.
 
 ## 3. Methodology
 
-Features come from four legs aggregated to one row per customer: application, bureau, behavioural (prior Home Credit repayments) and previous applications. Two models are built on train only. The LightGBM model uses depth 5, 15 leaves and at least 1,000 observations per leaf, fixed in configuration after offline train-only cross-validation, and is monotonically constrained: 53 features may only raise PD and 38 may only lower it, following their train-only WoE trends. The WoE scorecard groups each feature into monotonic optimal bins and fits a logistic regression, with points scaled at 20 points to double the odds and a base score of 600 at 50:1 odds. Calibration of the champion was assessed on out-of-fold train predictions: not needed: OOF ECE 0.0039 (max 0.005), slope 0.941 (tolerance 0.1). PDs map to a 10-grade master scale. An application-only model of the champion's type serves as an origination-PD proxy for ECL staging. No language model fits, tunes or alters any model.
+Features come from four legs aggregated to one row per customer: application, bureau, behavioural (prior Home Credit repayments) and previous applications. Two models are built on train only. The LightGBM model uses depth 5, 15 leaves and at least 1,000 observations per leaf, fixed in configuration after offline train-only cross-validation, and is monotonically constrained: 53 features may only raise PD and 38 may only lower it, following their train-only WoE trends. The WoE scorecard groups each feature into monotonic optimal bins and fits a logistic regression, with points scaled at 20 points to double the odds and a base score of 600 at 50:1 odds. Calibration of the champion was assessed on out-of-fold train predictions: not needed: OOF ECE 0.0039 (max 0.005), slope 0.941 (tolerance 0.1). A grade-level monotone recalibration fitted on the same out-of-fold predictions then aligns PD levels with observed default rates without changing the ranking. PDs map to a 10-grade master scale. An application-only model of the champion's type serves as an origination-PD proxy for ECL staging. No language model fits, tunes or alters any model.
 
 ## 4. Feature selection
 
@@ -62,21 +62,30 @@ Of 114 engineered features, 112 were candidates (gender and marital status are p
 
 ## 5. Performance
 
-The champion achieves OOT Gini 0.5602 (AUC 0.7801) against 0.6120 on train. OOT calibration is close: decile ECE 0.0035 and calibration slope 0.957. The benchmark challenger reaches OOT Gini 0.5008 (AUC 0.7504), so the champion leads by 0.0594 Gini.
+The champion achieves OOT Gini 0.5602 (AUC 0.7801) against 0.6120 on train. OOT calibration is close: decile ECE 0.0020 and calibration slope 1.004. The benchmark challenger reaches OOT Gini 0.5008 (AUC 0.7504), so the champion leads by 0.0594 Gini.
 
 | Model | Partition | Gini | AUC | KS | Mean PD | Default rate |
 |---|---|---|---|---|---|---|
-| champion (lightgbm) | train | 0.6120 | 0.8060 | 0.4623 | 8.07% | 8.07% |
-| champion (lightgbm) | test | 0.5520 | 0.7760 | 0.4115 | 8.07% | 8.07% |
-| champion (lightgbm) | oot | 0.5602 | 0.7801 | 0.4263 | 8.08% | 8.07% |
+| champion (lightgbm) | train | 0.6120 | 0.8060 | 0.4623 | 8.19% | 8.07% |
+| champion (lightgbm) | test | 0.5520 | 0.7760 | 0.4115 | 8.20% | 8.07% |
+| champion (lightgbm) | oot | 0.5602 | 0.7801 | 0.4263 | 8.20% | 8.07% |
 | challenger (scorecard) | train | 0.5041 | 0.7521 | 0.3782 | 8.07% | 8.07% |
 | challenger (scorecard) | test | 0.4896 | 0.7448 | 0.3676 | 8.06% | 8.07% |
 | challenger (scorecard) | oot | 0.5008 | 0.7504 | 0.3769 | 8.04% | 8.07% |
 
 | Model (OOT) | Decile ECE | Slope | HL p-value | Mean PD / DR |
 |---|---|---|---|---|
-| champion (lightgbm) | 0.0035 | 0.957 | 0.0059 | 1.001 |
+| champion (lightgbm) | 0.0020 | 1.004 | 0.0496 | 1.016 |
 | challenger (scorecard) | 0.0023 | 1.003 | 0.3162 | 0.996 |
+
+| Champion, OOT | Before recalibration | After recalibration |
+|---|---|---|
+| Decile ECE | 0.0035 | 0.0020 |
+| Calibration slope | 0.957 | 1.004 |
+| Hosmer-Lemeshow p-value | 0.0059 | 0.0496 |
+| Mean PD / default rate | 1.001 | 1.016 |
+| Grades red / amber (binomial) | 2 / 0 | 0 / 0 |
+| Gini (unchanged: rank order preserved) | 0.5602 | 0.5602 |
 
 ## 6. Explainability of the challenger
 
@@ -142,4 +151,4 @@ Key limitations: (1) the OOT holdout is random, so temporal stability is unteste
 
 ## 8. Governance and reproducibility
 
-Run 20261019T055332Z_full_bd0bb86ae168 used seed 42 and configuration hash bd0bb86ae168; the same inputs reproduce the same numbers. Every fitting step is guarded to accept train rows only. Each graph node logs its inputs, outputs, gate decisions and timings to an audit trail. The independent validator works on saved outputs only and verifies model artefact checksums. LLM agents critique and document; they cannot change model parameters.
+Run 20261019T061824Z_full_e1365d46d0f3 used seed 42 and configuration hash e1365d46d0f3; the same inputs reproduce the same numbers. Every fitting step is guarded to accept train rows only. Each graph node logs its inputs, outputs, gate decisions and timings to an audit trail. The independent validator works on saved outputs only and verifies model artefact checksums. LLM agents critique and document; they cannot change model parameters.

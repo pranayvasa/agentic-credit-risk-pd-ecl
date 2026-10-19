@@ -65,7 +65,9 @@ documents:
           monotonic optimal bins and fits a logistic regression, with points scaled at
           {scorecard.scaling.pdo:.0f} points to double the odds and a base score of
           {scorecard.scaling.base_score:.0f} at {scorecard.scaling.base_odds:.0f}:1 odds. Calibration of the
-          champion was assessed on out-of-fold train predictions: {champion.calibration_decision}. PDs map to
+          champion was assessed on out-of-fold train predictions: {champion.calibration_decision}. A grade-level monotone recalibration fitted on the
+          same out-of-fold predictions then aligns PD levels with observed default rates without
+          changing the ranking. PDs map to
           a 10-grade master scale. An application-only model of the champion's type serves as an
           origination-PD proxy for ECL staging. No language model fits, tunes or alters any model.
         tables: []
@@ -96,7 +98,7 @@ documents:
           {champion.calibration_oot.slope:.3f}. The benchmark challenger reaches OOT Gini
           {challenger.performance.oot.gini:.4f} (AUC {challenger.performance.oot.auc:.4f}), so the champion
           leads by {comparison.champion_lead:.4f} Gini.
-        tables: [performance_table, calibration_table]
+        tables: [performance_table, calibration_table, recalibration_table]
       - id: explainability
         title: Explainability of the challenger
         guidance: >-
@@ -187,7 +189,7 @@ documents:
           {champion.performance.oot.default_rate:.2%}. The Hosmer-Lemeshow p-value is
           {champion.calibration_oot.hl_p_value:.4f}. Grade-level binomial tests are shown below; default
           rates rise across grades with {champion.rank_breaks_grade_oot} rank-order break(s).
-        tables: [performance_table, grade_table]
+        tables: [performance_table, grade_table, recalibration_table]
       - id: stability
         title: Stability
         guidance: >-

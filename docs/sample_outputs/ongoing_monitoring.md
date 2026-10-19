@@ -1,6 +1,6 @@
 # Ongoing Monitoring Plan — PD scorecard
 
-> Run `20261019T055332Z_full_bd0bb86ae168` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
+> Run `20261019T061824Z_full_e1365d46d0f3` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
 
 ## 1. Objectives
 
@@ -35,12 +35,12 @@ The validation findings below set the monitoring priorities.
 | V01 | info | Benchmarking | Champion outperforms the benchmark |
 | V02 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
 | V03 | info | Stability | External population (application_test) score distribution stable |
-| V04 | medium | Calibration | PD under-predicts default in some grades (OOT) |
-| V05 | low | Calibration | Hosmer-Lemeshow rejects on OOT |
-| V06 | medium | Discrimination | Rank-ordering breaks across PD deciles (OOT) |
-| V07 | low | Master scale | Sparsely populated grades |
-| V08 | low | Segments | Segment calibration off in income_type = State servant |
-| V09 | low | Conceptual soundness | Champion uses undisclosed external scores |
+| V04 | low | Calibration | Hosmer-Lemeshow rejects on OOT |
+| V05 | medium | Discrimination | Rank-ordering breaks across PD deciles (OOT) |
+| V06 | low | Master scale | Sparsely populated grades |
+| V07 | low | Segments | Segment calibration off in income_type = State servant |
+| V08 | low | Conceptual soundness | Champion uses undisclosed external scores |
+| V09 | info | Calibration | Grade-level recalibration applied to the champion |
 | V10 | info | Explainability | Monotonic constraints verified |
 | V11 | info | Explainability | LightGBM explanations are stable |
 | V12 | medium | Conceptual soundness | Target is not the regulatory default definition |

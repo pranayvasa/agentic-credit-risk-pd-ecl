@@ -121,6 +121,8 @@ class CalibrationCfg(_Strict):
     cv_folds: int
     ece_max: float
     slope_tol: float
+    grade_recalibration: bool = False
+    grade_min_n: int = 500
 
 
 class ModelCfg(_Strict):

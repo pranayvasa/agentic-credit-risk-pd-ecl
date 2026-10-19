@@ -1,6 +1,6 @@
 # ECL Methodology Note — illustrative RBI ECL
 
-> Run `20261019T055332Z_full_bd0bb86ae168` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
+> Run `20261019T061824Z_full_e1365d46d0f3` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
 
 ## 1. Scope and status
 
@@ -36,12 +36,12 @@ Stage 3 applies to borrowers more than 90 days past due on prior Home Credit loa
 
 ## 3. 12-month and lifetime PD
 
-The 12-month PD is the champion PD, floored at 0.03%. Lifetime PD uses a constant monthly hazard. An alternative scales a monthly DPD transition chain estimated from bureau history to the same 12-month PD; it changes total ECL from 2,046.9 million to 1,934.8 million.
+The 12-month PD is the champion PD, floored at 0.03%. Lifetime PD uses a constant monthly hazard. An alternative scales a monthly DPD transition chain estimated from bureau history to the same 12-month PD; it changes total ECL from 2,087.4 million to 1,974.1 million.
 
 | Method | Weighted ECL | Stage 2 ECL | Stage 2 mean lifetime PD |
 |---|---|---|---|
-| constant_hazard | 2,046.9 million | 308.4 million | 40.42% |
-| markov | 1,934.8 million | 324.8 million | 45.31% |
+| constant_hazard | 2,087.4 million | 309.8 million | 40.71% |
+| markov | 1,974.1 million | 327.1 million | 45.70% |
 
 ## 4. EAD, EIR and LGD
 
@@ -49,14 +49,14 @@ Term and rate cannot both be derived from credit and annuity amounts, so the mon
 
 | LGD | Model ECL | Final ECL | Coverage |
 |---|---|---|---|
-| 45% | 1,315.9 million | 1,388.5 million | 3.02% |
-| 55% | 1,608.3 million | 1,661.2 million | 3.61% |
-| 70% | 2,046.9 million | 2,081.1 million | 4.52% |
-| 80% | 2,339.3 million | 2,365.5 million | 5.14% |
+| 45% | 1,341.9 million | 1,407.6 million | 3.06% |
+| 55% | 1,640.1 million | 1,684.8 million | 3.66% |
+| 70% | 2,087.4 million | 2,111.8 million | 4.59% |
+| 80% | 2,385.6 million | 2,401.3 million | 5.22% |
 
 ## 5. Forward-looking scenarios
 
-Three illustrative scenarios scale the 12-month PD; staging is held constant. The probability-weighted model ECL is 2,046.9 million.
+Three illustrative scenarios scale the 12-month PD; staging is held constant. The probability-weighted model ECL is 2,087.4 million.
 
 | Scenario | Weight | PD scalar |
 |---|---|---|
@@ -66,21 +66,21 @@ Three illustrative scenarios scale the 12-month PD; staging is held constant. Th
 
 | Scenario column | Total ECL |
 |---|---|
-| base (w=0.60, PD x1.00) | 1,925.8 million |
-| upside (w=0.15, PD x0.85) | 1,646.2 million |
-| downside (w=0.25, PD x1.35) | 2,578.0 million |
-| probability_weighted | 2,046.9 million |
+| base (w=0.60, PD x1.00) | 1,964.0 million |
+| upside (w=0.15, PD x0.85) | 1,678.8 million |
+| downside (w=0.25, PD x1.35) | 2,628.6 million |
+| probability_weighted | 2,087.4 million |
 
 ## 6. Results
 
-Final ECL after RBI minimum provisions is 2,081.1 million, a coverage of 4.52% of exposure. Coverage is 3.96%, 15.86% and 70.00% for Stages 1, 2 and 3. Floors add 34.2 million.
+Final ECL after RBI minimum provisions is 2,111.8 million, a coverage of 4.59% of exposure. Coverage is 4.03%, 15.91% and 70.00% for Stages 1, 2 and 3. Floors add 24.4 million.
 
 | Stage | Accounts | Exposure | Model ECL | Final ECL | Coverage | Floor binds |
 |---|---|---|---|---|---|---|
-| stage_1 | 73,235 | 43,986.7 million | 1,712.7 million | 1,741.2 million | 3.96% | 18.6% |
-| stage_2 | 3,572 | 1,980.4 million | 308.4 million | 314.1 million | 15.86% | 19.1% |
+| stage_1 | 73,235 | 43,986.7 million | 1,751.8 million | 1,771.0 million | 4.03% | 18.4% |
+| stage_2 | 3,572 | 1,980.4 million | 309.8 million | 315.0 million | 15.91% | 17.6% |
 | stage_3 | 71 | 36.8 million | 25.8 million | 25.8 million | 70.00% | 0.0% |
-| total | 76,878 | 46,003.9 million | 2,046.9 million | 2,081.1 million | 4.52% | 18.6% |
+| total | 76,878 | 46,003.9 million | 2,087.4 million | 2,111.8 million | 4.59% | 18.3% |
 
 ## 7. Limitations
 

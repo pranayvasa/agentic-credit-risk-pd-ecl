@@ -280,6 +280,18 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             "them performance falls materially (docs/sensitivity_ext_source.md).",
         )  # fmt: skip
 
+    rc = m.get("recalibration")
+    if rc and rc.get("applied"):
+        b, a = rc["before"], rc["after"]
+        add("Calibration", "info", "Grade-level recalibration applied to the champion",
+            f"A monotone log-odds recalibration with {rc['anchors']} grade anchors, fitted on train "
+            f"out-of-fold PDs, was applied. On OOT: decile ECE {b['ece']:.4f} before vs {a['ece']:.4f} "
+            f"after; calibration slope {b['slope']:.3f} vs {a['slope']:.3f}; Hosmer-Lemeshow p-value "
+            f"{b['hl_p_value']:.4f} vs {a['hl_p_value']:.4f}; red grades {b['red_grades']} vs "
+            f"{a['red_grades']}. Gini is unchanged ({b['gini']:.4f} vs {a['gini']:.4f}) because the map "
+            "preserves rank order.",
+            "Refit the recalibration at each model refresh; monitor grade-level binomial tests.")  # fmt: skip
+
     ex = m.get("explain")
     if ex:
         mono = ex["monotone"]

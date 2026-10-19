@@ -89,6 +89,22 @@ def validate(view):
     grades = V.grade_table(oot, "pd_champion", "grade_champion", v.binomial_alpha_red,
                            v.binomial_alpha_amber)  # fmt: skip
     deciles = V.decile_table(oot, "pd_champion")
+    if "pd_champion_uncalibrated" in oot and model.get("grade_recalibration", {}).get("applied"):
+        before = V.grade_table(oot, "pd_champion_uncalibrated", "grade_champion_uncalibrated",
+                               v.binomial_alpha_red, v.binomial_alpha_amber)  # fmt: skip
+        m["recalibration"] = {
+            "applied": True,
+            "anchors": model["grade_recalibration"]["anchors"],
+            "before": {**V.calibration(oot["TARGET"], oot["pd_champion_uncalibrated"]),
+                       "gini": V.gini(oot["TARGET"], oot["pd_champion_uncalibrated"]),
+                       "red_grades": int((before["traffic_light"] == "red").sum()),
+                       "amber_grades": int((before["traffic_light"] == "amber").sum())},
+            "after": {**V.calibration(oot["TARGET"], oot["pd_champion"]),
+                      "gini": V.gini(oot["TARGET"], oot["pd_champion"]),
+                      "red_grades": int((grades["traffic_light"] == "red").sum()),
+                      "amber_grades": int((grades["traffic_light"] == "amber").sum())},
+        }  # fmt: skip
+        before_grades = before
     m["champion"]["rank_breaks_grade_oot"] = V.rank_order_breaks(
         grades["default_rate"], grades["n"]
     )
@@ -139,6 +155,8 @@ def validate(view):
 
     out = artefact_dir(view, "validation")
     grades.to_csv(out / "grade_table_oot.csv", index=False)
+    if "recalibration" in m:
+        before_grades.to_csv(out / "grade_table_oot_before_recalibration.csv", index=False)
     deciles.to_csv(out / "decile_table_oot.csv", index=False)
     csi.to_csv(out / "csi_selected.csv", index=False)
     seg.to_csv(out / "segments_oot.csv", index=False)

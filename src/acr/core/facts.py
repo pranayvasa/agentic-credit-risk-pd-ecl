@@ -195,6 +195,8 @@ def build_facts(state: Mapping[str, Any]) -> dict:
         f["stability"] = {"score_psi": st["score_psi"], "stress_psi": st["stress_psi"],
                           "csi_max": st["csi_max"], "external": st.get("external")}  # fmt: skip
         f["external_score_share"] = vm["external_score_share"]
+        if vm.get("recalibration"):
+            f["recalibration"] = vm["recalibration"]
         g = v.get("grade_table_oot", {})
         f["grades_oot"] = (
             [dict(zip(g, row, strict=True)) for row in zip(*g.values(), strict=True)] if g else []

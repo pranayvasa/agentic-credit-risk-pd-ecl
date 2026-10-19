@@ -801,9 +801,79 @@ for g in (3, 8):
           f" -> p-value {p_value:.4f} ({verdict})")
 """)
 md("""
-**What to notice.** The champion's calibration is good overall but not perfect: in some grades it
-slightly *under*-predicts risk. The validator records this as a medium finding to monitor, and a
-grade-level recalibration is a possible fix. This is the honest cost of the more complex model.
+**What to notice.** Straight out of LightGBM, calibration is good overall but not perfect: in
+grades 3 and 8 the model *under*-predicts risk (red). The fix is a **grade-level recalibration**.
+
+### 9a. Grade-level recalibration (fixing the PD levels without changing the ranking)
+
+The pipeline fits it on **train out-of-fold** predictions, never on OOT:
+
+1. For each grade, it compares the average predicted log-odds with the observed default log-odds.
+2. It forces these "anchor" points to be increasing.
+3. It maps every PD through them by **straight-line interpolation in log-odds**.
+
+Because the map only ever goes up, no applicant overtakes another. Gini and the reason codes
+don't change; only the PD *levels* move. Here we apply the saved anchors by hand:
+""")
+code("""
+recal = json.loads((ART / "model" / "calibration.json").read_text())["grade_recalibration"]
+anchors = pd.DataFrame(recal["anchors"])[["grade", "n", "mean_pd", "observed_dr", "recalibrated_dr"]]
+print("fitted on train out-of-fold predictions; one anchor per grade:")
+anchors.style.format({"n": "{:,}", "mean_pd": "{:.2%}", "observed_dr": "{:.2%}", "recalibrated_dr": "{:.2%}"})
+""")
+code("""
+xs, ys = np.array(recal["xs"]), np.array(recal["ys"])
+
+
+def recalibrate(p):
+    l = np.log(p / (1 - p))                          # PD -> log-odds
+    out = np.interp(l, xs, ys)                       # straight lines between the anchors
+    out = np.where(l < xs[0], ys[0] + (l - xs[0]), out)     # beyond the ends: same slope as raw
+    out = np.where(l > xs[-1], ys[-1] + (l - xs[-1]), out)
+    return 1 / (1 + np.exp(-out))                    # log-odds -> PD
+
+
+pd_recal = pd.Series(recalibrate(pd_gbm.to_numpy()), index=oot_ids)
+first = oot_ids.iloc[0]          # .iloc[0] = "the first row" (oot_ids[0] would look for a LABEL 0)
+check("recalibrated PD, first OOT applicant", pd_recal.loc[first], scored.loc[first, "pd_champion"], 6)
+print("ranking unchanged:", "✓" if pd_recal.rank().equals(pd_gbm.rank()) else "✗",
+      "| Gini before", round(2 * roc_auc_score(y_all.loc[oot_ids], pd_gbm) - 1, 4),
+      "after", round(2 * roc_auc_score(y_all.loc[oot_ids], pd_recal) - 1, 4))
+""")
+code("""
+# Before and after, by grade, on OOT (data the recalibration never saw)
+def grade_test(p):
+    g = np.searchsorted(bounds, p, side="left") + 1
+    t = pd.DataFrame({"grade": g, "pd": p, "y": y_all.loc[oot_ids].to_numpy()}).groupby("grade") \\
+          .agg(accounts=("pd", "size"), mean_pd=("pd", "mean"), defaults=("y", "sum"))
+    t["default_rate"] = t["defaults"] / t["accounts"]
+    t["p_value"] = [stats.binom.sf(d - 1, n, q) for d, n, q in zip(t["defaults"], t["accounts"], t["mean_pd"])]
+    t["light"] = np.where(t["p_value"] <= 0.01, "red", np.where(t["p_value"] <= 0.05, "amber", "green"))
+    return t
+
+
+before, after = grade_test(pd_gbm.to_numpy()), grade_test(pd_recal.to_numpy())
+pd.DataFrame({"PD before": before["mean_pd"], "DR before": before["default_rate"], "light before": before["light"],
+              "PD after": after["mean_pd"], "DR after": after["default_rate"], "light after": after["light"]}) \\
+  .style.format({"PD before": "{:.2%}", "DR before": "{:.2%}", "PD after": "{:.2%}", "DR after": "{:.2%}"})
+""")
+code("""
+dec = lambda p: pd.DataFrame({"pd": p, "y": y_all.loc[oot_ids].to_numpy()}).assign(
+    d=lambda t: pd.qcut(t["pd"].rank(method="first"), 10, labels=False)).groupby("d").mean()
+b, a = dec(pd_gbm.to_numpy()), dec(pd_recal.to_numpy())
+fig, ax = plt.subplots(figsize=(4.8, 4.3))
+lim = max(b.max().max(), a.max().max()) * 1.1
+ax.plot([0, lim], [0, lim], color=MUTED, linewidth=1, linestyle="--", label="perfect calibration")
+ax.plot(b["pd"], b["y"], marker="o", markersize=7, linewidth=2, color=ORANGE, label="before recalibration")
+ax.plot(a["pd"], a["y"], marker="o", markersize=7, linewidth=2, color=BLUE, label="after recalibration")
+ax.set_xlabel("average predicted PD (OOT decile)"); ax.set_ylabel("observed default rate")
+for axis in (ax.xaxis, ax.yaxis):
+    axis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+ax.legend(frameon=False, loc="upper left")
+ax.set_title("Recalibration moves PDs onto the diagonal", loc="left", color=INK)
+plt.tight_layout()
+""")
+md("""
 
 ### The validator's findings
 
@@ -930,7 +1000,10 @@ check("final ECL for this loan", final, loan["ecl_final"], 2)
 md("""
 ### 10b. The whole book
 
-Stage rules applied to all 76,878 OOT loans, by hand with pandas conditions:
+Stage rules applied to all 76,878 OOT loans, by hand with pandas conditions. The "relative
+deterioration" test compares the champion with the application-only origination proxy. Both are
+raw model outputs, so it uses the champion's PD *before* recalibration (like with like). The
+ECL amount uses the recalibrated PD.
 """)
 code("""
 book = features.loc[oot_ids].join(scored.loc[oot_ids])
@@ -938,8 +1011,9 @@ hc_dpd = book[["BEH_INS_DPD_MAX_12M", "BEH_POS_DPD_MAX_12M"]].max(axis=1).fillna
 stage3 = hc_dpd > 90
 sicr = ((hc_dpd > 30)
         | (book["BUR_BB_WORST_BUCKET_12M"].fillna(0) >= 2) | (book["BUR_DAYS_OVERDUE_MAX"].fillna(0) > 30)
-        | ((book["grade_champion"] - book["grade_origination_proxy"]) >= 3)
-        | ((book["pd_champion"] >= 2 * book["pd_origination_proxy"]) & (book["pd_champion"] >= 0.05)))
+        | ((book["grade_champion_uncalibrated"] - book["grade_origination_proxy"]) >= 3)
+        | ((book["pd_champion_uncalibrated"] >= 2 * book["pd_origination_proxy"])
+           & (book["pd_champion_uncalibrated"] >= 0.05)))
 stage = np.where(stage3, 3, np.where(sicr, 2, 1))
 ours = pd.Series(stage).value_counts().sort_index()
 print(ours.rename("loans"))

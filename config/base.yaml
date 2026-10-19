@@ -76,6 +76,10 @@ model:
     cv_folds: 5              # out-of-fold predictions on train drive the calibration decision
     ece_max: 0.005           # recalibrate if OOF decile ECE exceeds this
     slope_tol: 0.10          # or if the OOF calibration slope differs from 1 by more than this
+    # Grade-level monotone recalibration of the CHAMPION, fitted on train out-of-fold PDs
+    # (decision D34). Strictly increasing in log-odds, so ranking (Gini, reason codes) is unchanged.
+    grade_recalibration: true
+    grade_min_n: 500         # grades with fewer OOF observations do not get their own anchor
   lightgbm:
     # Tuned by train-only 3-fold CV, 1-SE rule (D22). Hard limit: max_depth 1..10.
     max_depth: 5

@@ -230,6 +230,20 @@ def shap_table(f, ctx):
     return t1 + "\n\n" + t2
 
 
+def recalibration_table(f, ctx):
+    r = f.get("recalibration")
+    if not r:
+        return "_No grade-level recalibration was applied in this run._"
+    b, a = r["before"], r["after"]
+    rows = [["Decile ECE", f"{b['ece']:.4f}", f"{a['ece']:.4f}"],
+            ["Calibration slope", f"{b['slope']:.3f}", f"{a['slope']:.3f}"],
+            ["Hosmer-Lemeshow p-value", f"{b['hl_p_value']:.4f}", f"{a['hl_p_value']:.4f}"],
+            ["Mean PD / default rate", f"{b['pd_to_dr']:.3f}", f"{a['pd_to_dr']:.3f}"],
+            ["Grades red / amber (binomial)", f"{b['red_grades']} / {b['amber_grades']}", f"{a['red_grades']} / {a['amber_grades']}"],
+            ["Gini (unchanged: rank order preserved)", f"{b['gini']:.4f}", f"{a['gini']:.4f}"]]  # fmt: skip
+    return _md(["Champion, OOT", "Before recalibration", "After recalibration"], rows)
+
+
 def reason_family_table(f, ctx):
     e = f["explain"]
     t1 = _md(
@@ -261,4 +275,4 @@ TABLES = {fn.__name__: fn for fn in (
     data_table, split_table, selection_funnel_table, selected_features_table, performance_table,
     calibration_table, grade_table, stability_table, comparison_table, findings_table,
     findings_detail, critic_table, monitoring_table, staging_table, lifetime_table, lgd_table,
-    scenario_table, ecl_stage_table, ecl_assumptions_table, shap_table, explain_checks_table, reason_family_table)}  # fmt: skip
+    scenario_table, ecl_stage_table, ecl_assumptions_table, shap_table, explain_checks_table, reason_family_table, recalibration_table)}  # fmt: skip

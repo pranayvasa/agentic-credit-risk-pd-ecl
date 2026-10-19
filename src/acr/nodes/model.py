@@ -22,7 +22,7 @@ from sklearn.model_selection import StratifiedKFold
 from acr.audit import node
 from acr.core import binning as B
 from acr.core import challenger as C
-from acr.core.calibration import decide
+from acr.core.calibration import decide, fit_grade_recalibrator
 from acr.core.guards import require_partition
 from acr.core.master_scale import assign_grade, scale_table
 from acr.core.metrics import gini, ks
@@ -121,12 +121,26 @@ def model(view):
     bounds = m.master_scale.pd_upper_bounds
     pds = {"scorecard": pd_ch, "lightgbm": pd_cl}
     chal = "scorecard" if champ == "lightgbm" else "lightgbm"
+    # Grade-level monotone recalibration of the champion, fitted on train out-of-fold PDs only.
+    uncal = pds[champ]
+    recal = None
+    if m.calibration.grade_recalibration:
+        oof_champ = (cal_cl if champ == "lightgbm" else cal_ch).apply(
+            oof_cl if champ == "lightgbm" else oof_ch
+        )
+        recal = fit_grade_recalibrator(ytr, oof_champ, m.master_scale.pd_upper_bounds,
+                                       m.calibration.grade_min_n)  # fmt: skip
+        if recal.identity:
+            recal = None  # not enough out-of-fold data per grade; PDs left as they are
+        else:
+            pds[champ] = recal.apply(uncal)
     scored = pd.DataFrame({
         "partition": a["partition"].astype(str).reindex(features.index),
         "TARGET": y.reindex(features.index),
         "score": sc.score(W), "pd_scorecard_raw": pd_ch_raw,
         "pd_scorecard": pd_ch, "pd_lightgbm": pd_cl,
         "pd_champion": pds[champ], "grade_champion": assign_grade(pds[champ], bounds),
+        "pd_champion_uncalibrated": uncal, "grade_champion_uncalibrated": assign_grade(uncal, bounds),
         "pd_challenger": pds[chal], "grade_challenger": assign_grade(pds[chal], bounds),
         "pd_origination_proxy": pd_proxy, "grade_origination_proxy": assign_grade(pd_proxy, bounds),
     }, index=features.index)  # fmt: skip
@@ -168,6 +182,11 @@ def model(view):
     scale_table(bounds).to_csv(files["master_scale"], index=False)
     calib = {"scorecard": cal_ch.__dict__, "lightgbm": cal_cl.__dict__}
     calib = {**calib, "champion": calib[champ], "challenger": calib[chal]}
+    calib["grade_recalibration"] = (
+        {"applied_to": champ, "method": "monotone log-odds interpolation between grade anchors, "
+         "isotonic, fitted on train out-of-fold PDs", "xs": recal.xs, "ys": recal.ys,
+         "anchors": recal.table} if recal else {"applied_to": None}
+    )  # fmt: skip
     files["calibration"].write_text(json.dumps(calib, indent=2))
     files["monotone"].write_text(json.dumps({"enabled": bool(signs), "method": m.lightgbm_fit.monotone_method,
                                              "signs": signs or {}}, indent=2))  # fmt: skip
@@ -210,6 +229,11 @@ def model(view):
     return {
         "model": {
             "roles": {"champion": champ, "challenger": chal},
+            "grade_recalibration": {
+                "applied": bool(recal),
+                "model": champ if recal else None,
+                "anchors": len(recal.xs) if recal else 0,
+            },
             **summaries,
             "champion": summaries[champ],
             "challenger": summaries[chal],

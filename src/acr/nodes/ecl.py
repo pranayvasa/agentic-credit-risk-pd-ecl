@@ -107,7 +107,14 @@ def ecl(view):
     profile = L.markov_profile(tm, H)
 
     # --- staging ---
-    st = allocate(df, e.staging)
+    # The relative SICR test compares the champion with the origination proxy. Both must be on the
+    # same footing, so it uses the champion's PD and grade BEFORE grade-level recalibration (the
+    # proxy is not recalibrated). The ECL amount below uses the calibrated 12-month PD.
+    stage_in = df.copy()
+    if "pd_champion_uncalibrated" in df:
+        stage_in["pd_champion"] = df["pd_champion_uncalibrated"]
+        stage_in["grade_champion"] = df["grade_champion_uncalibrated"]
+    st = allocate(stage_in, e.staging)
     stage = st["stage"].to_numpy()
     book = Book(stage=stage, pd12=df["pd_champion"].to_numpy(), ead=ead, rate=rate,
                 term=remaining, pd_floor=e.pd["floor_12m"])  # fmt: skip
