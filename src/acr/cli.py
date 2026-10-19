@@ -54,7 +54,8 @@ def _run(args: argparse.Namespace) -> int:
     if g.get("status") in ("pass", "flagged"):
         print(
             f"  grounding: {g['status']} ({g['totals']['verified']} verified, "
-            f"{g['totals']['unverified']} unverified)"
+            f"{g['totals']['unverified']} unverified, {g['totals'].get('misattributed', 0)} misattributed, "
+            f"{g['totals'].get('contradictions', 0)} contradictions)"
         )
     t = report.get("llm_totals")
     if t:

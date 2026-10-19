@@ -48,7 +48,7 @@ class Token:
     decimals: int
     unit: str  # "", "%", or a scale word
     context: str
-    status: str = ""  # verified | allowlisted | unverified
+    status: str = ""  # verified | allowlisted | unverified | misattributed
 
 
 @dataclass
@@ -57,7 +57,7 @@ class Report:
 
     @property
     def counts(self) -> dict:
-        c = {"verified": 0, "allowlisted": 0, "unverified": 0}
+        c = {"verified": 0, "allowlisted": 0, "unverified": 0, "misattributed": 0}
         for t in self.tokens:
             c[t.status] += 1
         return c
@@ -65,6 +65,10 @@ class Report:
     @property
     def unverified(self) -> list[Token]:
         return [t for t in self.tokens if t.status == "unverified"]
+
+    @property
+    def misattributed(self) -> list[Token]:
+        return [t for t in self.tokens if t.status == "misattributed"]
 
 
 def _strip_structural(text: str) -> str:
@@ -113,4 +117,112 @@ def check(text: str, reference: list[float]) -> Report:
             t.status = "allowlisted"
         else:
             t.status = "unverified"
+    return report
+
+
+# --- label-aware check -------------------------------------------------------------------
+# A number can exist in the facts and still be attached to the wrong label ("challenger PD
+# PSI of 0.015" when 0.015 is really a stress-test PSI). For decimals and percentages in prose:
+#   1. take the words between the previous number (or clause start) and this number;
+#   2. find the measure named closest to the number (Gini, AUC, PSI, slope, p-value...);
+#   3. if qualifiers are named too (champion, challenger, train, OOT, stress...), narrow to the
+#      facts carrying the most of them;
+#   4. the number must equal one of those facts. If it only equals some other fact, it is
+#      "misattributed". With no measure named, only the existence check applies.
+# Tables are skipped: code renders them straight from facts.
+
+PHRASES = [
+    (r"out[- ]of[- ]time", "oot"), (r"probability of default", "pd"),
+    (r"mean pd\s*/\s*default rate|pd\s*/\s*dr|pd-to-dr|pd to dr", "pdtodr"),
+    (r"default rate", "defaultrate"), (r"p[- ]value", "pvalue"),
+    (r"expected calibration error|calibration error", "ece"),
+    (r"population stability index", "psi"), (r"characteristic stability index", "csi"),
+    (r"hosmer[- ]lemeshow", "hl"), (r"information value", "iv"),
+    (r"loss given default", "lgd"), (r"expected credit loss", "ecl"),
+    (r"exposure at default", "ead"), (r"kolmogorov[- ]smirnov", "ks"),
+    (r"\bbenchmark\b", "challenger"), (r"application_test|application test", "external"),
+    (r"\bleads? by\b", "lead"), (r"constant[- ]hazard", "hazard"),
+]  # fmt: skip
+PATH_PHRASES = [("pd_to_dr", "pdtodr"), ("default_rate", "defaultrate"), ("p_value", "pvalue"),
+                ("constant_hazard", "hazard"), ("champion_lead", "lead")]  # fmt: skip
+MEASURES = {"gini", "auc", "ks", "psi", "csi", "ece", "slope", "intercept", "hl", "pvalue",
+            "brier", "iv", "lgd", "ecl", "ead", "coverage", "pdtodr", "defaultrate", "lead",
+            "scalar", "weight", "spearman", "overlap", "hhi"}  # fmt: skip
+QUALIFIERS = {"champion", "challenger", "scorecard", "lightgbm", "external", "stress", "train",
+              "test", "oot", "before", "after", "upside", "downside", "base", "markov", "hazard"}  # fmt: skip
+
+
+def _canon(text: str) -> str:
+    text = text.lower()
+    for pat, rep in PHRASES:
+        text = re.sub(pat, rep, text)
+    return text
+
+
+def path_tokens(path: str) -> set[str]:
+    p = path.lower()
+    for a, b in PATH_PHRASES:
+        p = p.replace(a, b)
+    return {t for t in re.split(r"[._\[\]]+", p) if t and not t.isdigit()}
+
+
+def leaf_tokens(path: str) -> set[str]:
+    """Tokens of the last two path segments: what the fact measures, not its namespace."""
+    segs = re.sub(r"\[\d+\]", "", path).split(".")
+    return path_tokens(".".join(segs[-2:]))
+
+
+def _label_words(line: str, prev_end: int, start: int) -> list[str]:
+    seg = re.sub(r"\([^()]*\)", " ", line[prev_end:start])  # closed asides are not labels
+    seg = re.split(r"[.;!?:,](?:\s|$)|[()]", seg)[-1]
+    return re.findall(r"[a-z0-9]+", _canon(seg))
+
+
+def _value_matches(t: Token, values: np.ndarray) -> np.ndarray:
+    d, v = t.decimals, t.value
+    half = 0.5 * 10.0**-d + 1e-12
+    vals = np.abs(values)
+    if t.unit == "%":
+        return (np.abs(vals * 100 - v) <= half) | (np.abs(vals - v) <= half)
+    if t.unit in SCALES:
+        return np.abs(vals / SCALES[t.unit] - v) <= half
+    return (np.abs(vals - v) <= half) | (np.abs(vals * 100 - v) <= half)
+
+
+def check_labelled(text: str, labelled: list[tuple[str, float]]) -> Report:
+    """Existence check for every number, plus a label check for decimals and percentages in
+    prose. Statuses: verified, allowlisted, unverified, misattributed."""
+    paths = [p for p, _ in labelled]
+    values = np.asarray([v for _, v in labelled], dtype="float64")
+    ptoks = [path_tokens(p) for p in paths]
+    ltoks = [leaf_tokens(p) for p in paths]
+    report = Report()
+    for line in text.splitlines():
+        prose = not line.lstrip().startswith("|")
+        clean = _strip_structural(line)
+        prev_end = 0
+        for m in NUMBER.finditer(clean):
+            whole, frac, unit = m.group(1), m.group(2) or "", (m.group(3) or "").strip().lower()
+            t = Token(m.group(0).strip(), float(whole.replace(",", "") + frac),
+                      max(len(frac) - 1, 0), unit, line[max(0, m.start() - 45): m.end() + 25])  # fmt: skip
+            hits = _value_matches(t, values)
+            t.status = "verified"
+            if not hits.any():
+                t.status = "allowlisted" if _allowlisted(t) else "unverified"
+            elif prose and (t.decimals > 0 or t.unit == "%"):
+                words = _label_words(line, prev_end, m.start())
+                measures = {w for w in words if w in MEASURES}
+                if measures:
+                    cand = np.array([bool(measures & lt) for lt in ltoks])
+                    quals = set(words) & QUALIFIERS
+                    if quals and cand.any():
+                        qscore = np.array([len(pt & quals) for pt in ptoks]) * cand
+                        if qscore.max() > 0:
+                            cand = qscore == qscore.max()
+                    if cand.any() and not hits[cand].any():
+                        t.status = "misattributed"
+                        j = int(np.argmax(cand))
+                        t.context += f"  [reads as {paths[j]} = {values[j]:.6g}]"
+            prev_end = m.end()
+            report.tokens.append(t)
     return report

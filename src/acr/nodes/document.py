@@ -69,7 +69,14 @@ def document(view):
     ctx = {"critic_reviews": view.get("critic_reviews", []),
            "extra_analyses": view.get("extra_analyses", [])}  # fmt: skip
     spec = load_spec()
-    prompt_tpl = load_prompt("doc_section")
+    prompt_tpl = load_prompt("doc_section", c.llm.prompts.get("doc_section", "v1"))
+    reviews = [r for r in view.get("critic_reviews", []) if not r.get("skipped")]
+    critic_summary = json.dumps({
+        "reviews": len(reviews),
+        "challenges": [ch.get("title") for r in reviews for ch in r.get("challenges", [])],
+        "analyses_requested": len(view.get("extra_analyses", [])),
+        "analyses": [e["kind"] for e in view.get("extra_analyses", [])],
+    })  # fmt: skip
     facts_json = json.dumps(facts, separators=(",", ":"), default=str)
     out_dir = Path(view["run_dir"]) / "documents"
     out_dir.mkdir(exist_ok=True)
@@ -88,7 +95,7 @@ def document(view):
         for i, sec in enumerate(d["sections"], 1):
             prompt = (prompt_tpl.replace("{{DOCUMENT}}", d["title"]).replace("{{PURPOSE}}", d["purpose"])
                       .replace("{{SECTION}}", sec["title"]).replace("{{GUIDANCE}}", sec["guidance"])
-                      .replace("{{FACTS}}", facts_json))  # fmt: skip
+                      .replace("{{CRITIC}}", critic_summary).replace("{{FACTS}}", facts_json))  # fmt: skip
             resp = provider.generate(prompt, task="doc_section",
                                      context={"dry_run_text": fill(sec["template"], facts)})  # fmt: skip
             calls.append(LLMCall(node="document", provider=resp.provider, model=resp.model,

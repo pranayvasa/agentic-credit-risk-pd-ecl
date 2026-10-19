@@ -65,7 +65,7 @@ def _pct(x, nd=2):
 def results_block(s: dict) -> str:
     v = s["validation"]["metrics"]
     out = [
-        f"From run `{s['run_id']}` (full population, dry-run LLM mode, config hash `{s['config_hash']}`).",
+        f"From run `{s['run_id']}` (full population, LLM mode `{s['llm_mode']}`, config hash `{s['config_hash']}`).",
         "",
     ]
     out += ["**Discrimination and calibration** (Gini = 2 × AUC − 1)", "",
@@ -110,8 +110,10 @@ def results_block(s: dict) -> str:
     out += ["", "| Control | Result |", "|---|---|",
             f"| Validation gate | {s['validation']['gate_decision']} ({', '.join(f'{n} {k}' for k, n in s['validation']['findings_by_severity'].items())}) |",
             f"| Critic loop | {len(s['critic_reviews'])} reviews, {len(s['extra_analyses'])} whitelisted analyses run |",
-            f"| Grounding check | {g['status']}: {g['totals']['verified']} numbers verified, {g['totals']['unverified']} unverified |",
-            f"| LLM calls (dry-run) | {len(calls)} calls, ~{sum(x['input_tokens'] for x in calls):,} input tokens |",
+            f"| Grounding check (existence, attribution, consistency) | {g['status']}: {g['totals']['verified']} numbers verified; "
+            f"{g['totals']['unverified']} unverified, {g['totals'].get('misattributed', 0)} misattributed, "
+            f"{g['totals'].get('contradictions', 0)} contradictions |",
+            f"| LLM calls ({calls[0]['provider'] if calls else 'none'}) | {len(calls)} calls, ~{sum(x['input_tokens'] for x in calls):,} input tokens |",
             f"| ECL QC checks | {sum(e['checks'].values())} of {len(e['checks'])} pass |"]  # fmt: skip
     return "\n".join(out)
 

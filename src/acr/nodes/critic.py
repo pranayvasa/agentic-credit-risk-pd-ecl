@@ -89,7 +89,7 @@ def critic(view):
         }
     payload = payload_for(view)
     prompt = (
-        load_prompt("critic")
+        load_prompt("critic", c.llm.prompts.get("critic", "v1"))
         .replace("{{ITERATION}}", str(it + 1))
         .replace("{{MAX}}", str(c.llm.max_critic_iterations))
         .replace("{{PAYLOAD}}", json.dumps(payload, default=str, indent=1))

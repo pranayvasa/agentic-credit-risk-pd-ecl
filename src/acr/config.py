@@ -224,6 +224,7 @@ class LLMCfg(_Strict):
     ollama: OllamaCfg
     cost_per_million: dict[str, TokenRate]
     estimate: CostEstimateCfg
+    prompts: dict[str, str] = {"critic": "v1", "doc_section": "v1"}
 
 
 class Scenario(_Strict):

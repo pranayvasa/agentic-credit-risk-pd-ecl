@@ -2,6 +2,12 @@
 mode: dry-run                  # dry-run | gemini | ollama
 max_critic_iterations: 2
 
+# Prompt versions (files under prompts/). v2: tougher critic; documents must not contradict
+# findings and must label every number. v1 is kept for comparison (decision D35).
+prompts:
+  critic: v2
+  doc_section: v2
+
 gemini:
   # Model IDs verified against https://ai.google.dev/gemini-api/docs/models on 2026-10-18.
   # Both are stable models already in use in the author's other projects.
