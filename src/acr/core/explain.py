@@ -89,3 +89,53 @@ def monotonicity_violations(booster: lgb.Booster, X: pd.DataFrame, signs: dict[s
         rows.append({"feature": f, "sign": s, "rows": len(X), "grid_points": len(qs),
                      "violating_rows": int((steps < -1e-9).any(axis=0).sum())})  # fmt: skip
     return pd.DataFrame(rows)
+
+
+def family_map(features: list[str], families: list[dict]) -> dict[str, str]:
+    """Assign each feature to the first family whose regex pattern matches its name."""
+    import re
+
+    out = {}
+    for f in features:
+        for fam in families:
+            if any(re.search(p, f) for p in fam["patterns"]):
+                out[f] = fam["family"]
+                break
+    return out
+
+
+def family_shap(sh: pd.DataFrame, fmap: dict[str, str]) -> pd.DataFrame:
+    """Sum each applicant's SHAP values within a family (log-odds). Correlated features in a
+    family (e.g. the three external scores and their mean and minimum) become one reason."""
+    f = sh.drop(columns="bias")
+    return f.T.groupby(pd.Series(fmap).reindex(f.columns)).sum().T
+
+
+def family_reason_codes(
+    sh: pd.DataFrame, fmap: dict[str, str], labels: dict[str, str], k: int
+) -> pd.DataFrame:
+    """Top-k families that raised each applicant's PD, with the strongest feature in each."""
+    fs = family_shap(sh, fmap)
+    feat = sh.drop(columns="bias")
+    fam_of = pd.Series(fmap).reindex(feat.columns)
+    # Strongest feature within each family, per applicant (vectorised).
+    top_feat = {}
+    for fam in fs.columns:
+        cols = fam_of.index[fam_of == fam]
+        block = feat[cols].to_numpy()
+        top_feat[fam] = np.asarray(cols)[block.argmax(axis=1)]
+    vals, fams = fs.to_numpy(), np.asarray(fs.columns)
+    order = np.argsort(-vals, axis=1)[:, :k]
+    n = len(fs)
+    out = []
+    for rank in range(k):
+        j = order[:, rank]
+        v = vals[np.arange(n), j]
+        keep = v > 0
+        fam = fams[j]
+        out.append(pd.DataFrame({
+            "SK_ID_CURR": fs.index[keep], "rank": rank + 1, "family": fam[keep],
+            "reason": [labels[x] for x in fam[keep]], "shap_logodds": v[keep],
+            "top_feature": [top_feat[f][i] for f, i in zip(fam[keep], np.nonzero(keep)[0], strict=True)],
+        }))  # fmt: skip
+    return pd.concat(out).sort_values(["SK_ID_CURR", "rank"]).reset_index(drop=True)

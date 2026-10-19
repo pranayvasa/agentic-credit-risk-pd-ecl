@@ -69,7 +69,8 @@ def test_permuting_test_and_oot_targets_changes_nothing_learned(tmp_path, base_r
                                   pd.read_csv(state["selection"]["paths"]["binning_tables"]))  # fmt: skip
     assert base_run["selection"]["selected"] == state["selection"]["selected"]
     assert (
-        base_run["model"]["champion"]["coefficients"] == state["model"]["champion"]["coefficients"]
+        base_run["model"]["scorecard"]["coefficients"]
+        == state["model"]["scorecard"]["coefficients"]
     )
     s1, s2 = _scored(base_run), _scored(state)
     np.testing.assert_allclose(s1["pd_champion"], s2["pd_champion"])
@@ -95,7 +96,7 @@ def test_same_inputs_give_identical_results(base_run, tmp_path):
     run2 = build_graph().invoke({"config": cfg, "sample_frac": None, "llm_mode": "dry-run"},
                                 {"recursion_limit": 60})  # fmt: skip
     pd.testing.assert_frame_equal(_scored(base_run), _scored(run2))
-    for k in ("scored", "coefficients", "points", "challenger", "master_scale"):
+    for k in ("scored", "coefficients", "points", "lightgbm", "master_scale"):
         assert base_run["model"]["checksums"][k] == run2["model"]["checksums"][k], k
 
 
@@ -103,7 +104,7 @@ def test_same_inputs_give_identical_results(base_run, tmp_path):
 
 
 def test_champion_coefficients_negative_on_woe(base_run):
-    coefs = base_run["model"]["champion"]["coefficients"]
+    coefs = base_run["model"]["scorecard"]["coefficients"]
     assert coefs and all(v < 0 for v in coefs.values())
 
 
@@ -135,7 +136,7 @@ def test_points_table_reproduces_scores(base_run):
 
 def test_higher_score_means_lower_pd(base_run):
     s = _scored(base_run)
-    assert s["score"].corr(s["pd_champion_raw"], method="spearman") == pytest.approx(-1.0)
+    assert s["score"].corr(s["pd_scorecard_raw"], method="spearman") == pytest.approx(-1.0)
 
 
 def test_models_discriminate_on_synthetic_signal(base_run):
@@ -157,9 +158,9 @@ def test_challenger_uses_fixed_config_hyperparameters(base_run):
     cfg = load_config().base.model.lightgbm
     import lightgbm as lgb
 
-    booster = lgb.Booster(model_file=base_run["model"]["paths"]["challenger"])
+    booster = lgb.Booster(model_file=base_run["model"]["paths"]["lightgbm"])
     params = booster.dump_model()["tree_info"]
-    assert len(params) == base_run["model"]["challenger"]["n_trees"] <= cfg["n_estimators"]
+    assert len(params) == base_run["model"]["lightgbm"]["n_trees"] <= cfg["n_estimators"]
 
 
 # --- master scale and metrics -----------------------------------------------------------
@@ -196,7 +197,7 @@ def test_excluded_features_never_reach_either_model(init_state):
     assert set(ex.loc[ex["stage"] == "config", "feature"]) == set(ext)
     assert not {s["feature"] for s in final["selection"]["selected"]} & set(ext)
     assert not set(final["model"]["origination_proxy"]["features"]) & set(ext)
-    booster = lgb.Booster(model_file=final["model"]["paths"]["challenger"])
+    booster = lgb.Booster(model_file=final["model"]["paths"]["lightgbm"])
     assert not set(booster.feature_name()) & set(ext)
 
 

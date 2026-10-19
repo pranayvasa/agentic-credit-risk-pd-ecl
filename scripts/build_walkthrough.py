@@ -53,7 +53,8 @@ executes each step on a **10% stratified sample** of the public Home Credit data
 this notebook is deterministic: fixed seed, versioned config, the same inputs give the same
 numbers. The LLM critic and documentation agents (Phase 6) sit *around* this core.
 
-**Status.** Phases 1–5 are built: skeleton, data quality, split, legs, feature selection,
+**Status.** All phases are built (the LLM nodes run in dry-run mode). This walkthrough covers
+the deterministic core; Phases 1–5 are built: skeleton, data quality, split, legs, feature selection,
 modelling (plus offline tuning), independent validation and the illustrative RBI ECL layer.
 The LLM critic, documentation and the grounding check are still stubs; they come in Phase 6.
 
@@ -438,17 +439,20 @@ display(ex.groupby("stage").head(3)[["stage", "feature", "leg", "reason", "value
 md("""
 ## 9. Modelling (node `model`): train only
 
-* **Champion: WoE logistic regression scorecard** (`core/scorecard.py`). It exports a
-  coefficient table (with standard errors and p-values) and a **points table** using the PDO
-  method (PDO 20, base score 600 at 50:1 odds). A higher score means lower risk.
-* **Challenger: LightGBM** (`core/challenger.py`) on all candidate features, with **fixed**
-  hyperparameters from config (tuned offline, §12). Early stopping uses a slice of train,
-  never test or OOT.
+* **Champion: monotone LightGBM** (`core/challenger.py`) on all candidate features, with
+  **fixed** hyperparameters from config (tuned offline, §12) and **monotonic constraints** taken
+  from each feature's train-only WoE trend. Early stopping uses a slice of train, never test or
+  OOT. `model.champion` in config assigns the roles (decision D33).
+* **Benchmark challenger and fallback: WoE logistic regression scorecard** (`core/scorecard.py`).
+  It exports a coefficient table (with standard errors and p-values) and a **points table** using
+  the PDO method (PDO 20, base score 600 at 50:1 odds). A higher score means lower risk.
 * **Calibration** (`core/calibration.py`). Out-of-fold train predictions decide whether
   Platt recalibration is needed (decile ECE above 0.005 or slope outside 1 ± 0.1).
 * **Master scale** (`core/master_scale.py`). PD maps to grades 1–10.
-* **Origination proxy.** An application-leg-only scorecard, used later by the ECL layer's
-  relative SICR test (no true origination PD exists in this data).
+* **Origination proxy.** An application-leg-only model of the champion's type, used later by
+  the ECL layer's relative SICR test (no true origination PD exists in this data).
+* **Explainability** (node `explain`, `core/explain.py`): exact TreeSHAP for every OOT applicant,
+  reason codes grouped into families, driver stability and a sweep test of the constraints.
 """)
 code("""
 import acr.core.metrics
@@ -481,10 +485,11 @@ step(model, state)
 m = state["model"]
 display(pd.DataFrame({k: {kk: m[k].get(kk) for kk in ("type", "n_features", "train_auc", "train_gini", "oof_auc", "oof_gini", "calibration")}
                       for k in ("champion", "challenger")}).T)
+print("roles:", m["roles"])
 print("origination proxy features:", m["origination_proxy"]["features"])
 """)
 code("""
-# Champion coefficient table: every WoE coefficient should be negative
+# Scorecard (benchmark) coefficient table: every WoE coefficient should be negative
 display(pd.read_csv(m["paths"]["coefficients"]).round(4))
 """)
 code("""
@@ -492,6 +497,19 @@ code("""
 pts = pd.read_csv(m["paths"]["points"])
 first = pts["feature"].iloc[0]
 display(pts[pts["feature"] == first][["feature", "bin", "count", "event_rate", "woe", "points_rounded"]])
+""")
+
+code("""
+import acr.core.explain
+show(acr.core.explain)
+""")
+code("""
+from acr.nodes.explain import explain
+
+step(explain, state)
+X = state["explain"]
+print("applicants explained:", X["applicants_explained"], "| constraint violations:", X["monotone"]["violating_rows"])
+display(pd.Series(X["family_shares"]).rename("share of SHAP weight").to_frame().style.format("{:.1%}"))
 """)
 
 # ---------------------------------------------------------------------------------------

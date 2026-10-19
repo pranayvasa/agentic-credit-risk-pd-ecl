@@ -155,9 +155,9 @@ def test_stress_psi_exceeds_unstressed():
     rng = np.random.default_rng(0)
     n = 20_000
     age = pd.Series(rng.uniform(20, 70, n))
-    score = 500 + 2 * age + rng.normal(0, 20, n)
+    pd_ = 1 / (1 + np.exp(-(-2 - 0.03 * (age - 45) + rng.normal(0, 0.5, n))))  # younger = riskier
     part = np.where(rng.uniform(size=n) < 0.5, "train", "oot")
-    scored = pd.DataFrame({"score": score, "partition": part})
+    scored = pd.DataFrame({"pd_champion": pd_, "partition": part})
     base = V.score_psi(scored)["train_vs_oot"]
     assert V.stress_psi(scored, age, 3.0) > max(0.05, 10 * base)
 

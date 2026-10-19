@@ -17,17 +17,17 @@ documents:
       - id: purpose
         title: Purpose and intended use
         guidance: >-
-          State the model's purpose (12-month-equivalent probability of default for unsecured
-          retail applicants), intended use (application decisioning support and as the PD input to an
-          illustrative ECL calculation), and that this is a portfolio demonstration on public data.
-          Name the champion and challenger.
+          State the model's purpose (12-month-equivalent PD for unsecured retail applicants), intended
+          use (application decisioning support and the PD input to an illustrative ECL calculation), and
+          that this is a portfolio demonstration on public data. Name the champion and the benchmark
+          challenger and say the challenger is the documented fallback.
         template: >-
           The model estimates a 12-month-equivalent probability of default (PD) for unsecured retail
           loan applicants, using the public Home Credit Default Risk data. It supports application
           decisioning and supplies the PD input to an illustrative RBI ECL calculation. The champion is
-          a {champion.n_features}-variable weight-of-evidence (WoE) logistic regression scorecard; the
-          challenger is a LightGBM gradient-boosting model on {challenger.n_features} candidate
-          features. This is a portfolio demonstration on public data, not a production model.
+          {roles.champion_desc}. The challenger, kept as the interpretable benchmark and documented
+          fallback, is {roles.challenger_desc}. This is a portfolio demonstration on public data, not a
+          production model.
         tables: []
       - id: data
         title: Data
@@ -56,17 +56,18 @@ documents:
           origination-proxy scorecard used for ECL staging. Stress that no LLM fits or tunes models.
         template: >-
           Features come from four legs aggregated to one row per customer: application, bureau,
-          behavioural (prior Home Credit repayments) and previous applications. Each continuous or
-          categorical feature is grouped into monotonic optimal bins fitted on train only, and replaced by
-          its weight of evidence. The champion is a logistic regression on WoE features with points scaled
-          at {champion.scaling.pdo:.0f} points to double the odds and a base score of
-          {champion.scaling.base_score:.0f} at {champion.scaling.base_odds:.0f}:1 odds. The challenger is
-          LightGBM with depth {challenger.params.max_depth}, {challenger.params.num_leaves} leaves and at
-          least {challenger.params.min_child_samples:,} observations per leaf, fixed in configuration
-          after offline train-only cross-validation. Calibration was assessed on out-of-fold train
-          predictions: {champion.calibration_decision}. PDs map to a 10-grade master scale. An
-          application-only scorecard serves as an origination-PD proxy for ECL staging. No language
-          model fits, tunes or alters any model.
+          behavioural (prior Home Credit repayments) and previous applications. Two models are built on
+          train only. The LightGBM model uses depth {lightgbm.params.max_depth}, {lightgbm.params.num_leaves}
+          leaves and at least {lightgbm.params.min_child_samples:,} observations per leaf, fixed in
+          configuration after offline train-only cross-validation, and is monotonically constrained:
+          {lightgbm.monotone.increasing} features may only raise PD and {lightgbm.monotone.decreasing} may
+          only lower it, following their train-only WoE trends. The WoE scorecard groups each feature into
+          monotonic optimal bins and fits a logistic regression, with points scaled at
+          {scorecard.scaling.pdo:.0f} points to double the odds and a base score of
+          {scorecard.scaling.base_score:.0f} at {scorecard.scaling.base_odds:.0f}:1 odds. Calibration of the
+          champion was assessed on out-of-fold train predictions: {champion.calibration_decision}. PDs map to
+          a 10-grade master scale. An application-only model of the champion's type serves as an
+          origination-PD proxy for ECL staging. No language model fits, tunes or alters any model.
         tables: []
       - id: selection
         title: Feature selection
@@ -90,11 +91,11 @@ documents:
           of overfitting in the champion, calibration, and the challenger gap. Report Gini with AUC.
         template: >-
           The champion achieves OOT Gini {champion.performance.oot.gini:.4f} (AUC
-          {champion.performance.oot.auc:.4f}) against {champion.performance.train.gini:.4f} on train, so
-          there is no material overfitting. OOT calibration is close: decile ECE
-          {champion.calibration_oot.ece:.4f} and calibration slope {champion.calibration_oot.slope:.3f}.
-          The challenger reaches OOT Gini {challenger.performance.oot.gini:.4f} (AUC
-          {challenger.performance.oot.auc:.4f}), {comparison.diff:.4f} higher than the champion.
+          {champion.performance.oot.auc:.4f}) against {champion.performance.train.gini:.4f} on train. OOT
+          calibration is close: decile ECE {champion.calibration_oot.ece:.4f} and calibration slope
+          {champion.calibration_oot.slope:.3f}. The benchmark challenger reaches OOT Gini
+          {challenger.performance.oot.gini:.4f} (AUC {challenger.performance.oot.auc:.4f}), so the champion
+          leads by {comparison.champion_lead:.4f} Gini.
         tables: [performance_table, calibration_table]
       - id: explainability
         title: Explainability of the challenger
@@ -104,18 +105,19 @@ documents:
           leg, and the stability and constraint checks. State the SHAP caveats (attribution, not cause;
           correlated features share credit).
         template: >-
-          The challenger is constrained so that {challenger.monotone.increasing} features can only raise PD
-          as they rise and {challenger.monotone.decreasing} can only lower it, following their train-only
-          WoE trends; {challenger.monotone.free} categorical or flat features are unconstrained. Every
-          OOT prediction is decomposed with exact TreeSHAP ({explain.applicants_explained:,} applicants;
-          attributions reconcile to the model score within {explain.additivity_max_error:.1e} in log-odds),
-          and each applicant receives the {explain.reason_codes_per_applicant} factors that raised their PD
-          most. A sweep test found {explain.monotone.violating_rows} violations of the constraints. The top
-          drivers are stable: test and OOT share {explain.stability.test_vs_oot.top_overlap:.0%} of the top
-          {explain.stability.test_vs_oot.top_n}. External scores carry {explain.external_score_share:.0%} of
-          mean absolute SHAP. SHAP describes attribution, not causation, and correlated features can share
-          credit, so importance is also shown by leg.
-        tables: [shap_table, explain_checks_table]
+          The LightGBM model is constrained so that {lightgbm.monotone.increasing} features can only raise
+          PD as they rise and {lightgbm.monotone.decreasing} can only lower it, following their train-only
+          WoE trends; {lightgbm.monotone.free} categorical or flat features are unconstrained. Every OOT
+          prediction is decomposed with exact TreeSHAP ({explain.applicants_explained:,} applicants;
+          attributions reconcile to the model score within {explain.additivity_max_error:.1e} in log-odds). A
+          sweep test found {explain.monotone.violating_rows} violations of the constraints. The top drivers are
+          stable: test and OOT share {explain.stability.test_vs_oot.top_overlap:.0%} of the top
+          {explain.stability.test_vs_oot.top_n}. Each applicant receives up to
+          {explain.reason_codes_per_applicant} reason codes, grouped into {explain.families} reason families
+          so that correlated features (for example the external scores and their mean and minimum) are
+          stated once. External scores carry {explain.external_score_share:.0%} of mean absolute SHAP. SHAP
+          describes attribution, not causation, so importance is also shown by leg and by reason family.
+        tables: [shap_table, reason_family_table, explain_checks_table]
       - id: limitations
         title: Assumptions and limitations
         guidance: >-
@@ -124,10 +126,10 @@ documents:
         template: >-
           Key limitations: (1) the OOT holdout is random, so temporal stability is untested; (2) the
           target is payment difficulty, not 90+ DPD; (3) undisclosed external scores carry
-          {external_score_share:.0%} of the scorecard's points range, and without them OOT Gini falls
-          below the gate (see the external-score sensitivity); (4) the data has no origination-date PD,
-          so ECL staging uses a proxy; (5) the ECL calculation is an illustrative simulation on a
-          pseudo-book, not a portfolio provision.
+          {external_score_share:.0%} of the champion's explanatory weight, and performance falls materially
+          without them (see the external-score sensitivity); (4) the data has no origination-date PD, so ECL
+          staging uses a proxy; (5) the ECL calculation is an illustrative simulation on a pseudo-book, not
+          a portfolio provision.
         tables: []
       - id: governance
         title: Governance and reproducibility
@@ -162,13 +164,16 @@ documents:
       - id: conceptual
         title: Conceptual soundness
         guidance: >-
-          Assess the design: scorecard method, train-only fitting, protected attributes excluded,
-          target definition gap, external score dependence.
+          Assess the design: the champion's method and its explainability controls (monotonic
+          constraints, SHAP), train-only fitting, protected attributes excluded, the target definition
+          gap and external score dependence.
         template: >-
-          The WoE scorecard is a well-understood, interpretable method, and all learned steps were fitted
-          on train only. Protected characteristics are excluded from the model. Two conceptual concerns
-          remain: the target is not the regulatory default definition, and external scores of unknown
-          construction account for {external_score_share:.0%} of the points range.
+          The champion is {roles.champion_desc}. Its complexity is mitigated by monotonic constraints,
+          which keep every feature's effect in line with credit logic, and by exact per-applicant SHAP
+          explanations; the scorecard is retained as an interpretable benchmark and fallback. All learned
+          steps were fitted on train only, and protected characteristics are excluded. Two conceptual
+          concerns remain: the target is not the regulatory default definition, and external scores of
+          unknown construction carry {external_score_share:.0%} of the champion's explanatory weight.
         tables: []
       - id: outcomes
         title: Outcomes analysis
@@ -199,14 +204,15 @@ documents:
       - id: benchmarking
         title: Benchmarking against the challenger
         guidance: >-
-          Compare champion and challenger with the bootstrap confidence interval, and discuss the
-          challenger's overfitting and the interpretability trade-off.
+          Compare champion and benchmark with the bootstrap interval, discuss whether the champion's
+          added complexity is justified, its overfitting, and the fallback role of the benchmark.
         template: >-
-          The challenger outperforms the champion on OOT by {comparison.diff:.4f} Gini (AUC
-          {comparison.auc_diff:.4f}), with a 95% bootstrap interval of {comparison.ci_low:.4f} to
-          {comparison.ci_high:.4f}. Its train Gini of {challenger.performance.train.gini:.4f} against OOT
-          {challenger.performance.oot.gini:.4f} shows it overfits more than the champion. The scorecard
-          is retained for interpretability; the gap is recorded as a finding.
+          The champion outperforms the benchmark scorecard on OOT by {comparison.champion_lead:.4f} Gini
+          (AUC {comparison.champion_lead_auc:.4f}); the 95% bootstrap interval for challenger minus
+          champion is {comparison.ci_low:.4f} to {comparison.ci_high:.4f}, so the gain is significant. The
+          champion's train Gini of {champion.performance.train.gini:.4f} against OOT
+          {champion.performance.oot.gini:.4f} shows modest overfitting within tolerance. The scorecard remains
+          the documented fallback.
         tables: [comparison_table]
       - id: findings
         title: Findings and remediation
@@ -231,9 +237,10 @@ documents:
           Give an overall opinion with conditions, consistent with the gate outcome and findings.
         template: >-
           The champion passes the performance gates with OOT Gini {champion.performance.oot.gini:.4f}
-          against a minimum of {thresholds.gini_min_oot}, and is well calibrated. It is fit for its
-          demonstration purpose, subject to the medium findings, in particular re-validation on a true
-          out-of-time sample and documentation of the external scores.
+          against a minimum of {thresholds.gini_min_oot}, is well calibrated, satisfies its monotonic
+          constraints and has stable explanations. It is fit for its demonstration purpose, subject to the
+          medium findings, in particular re-validation on a true out-of-time sample and documentation of
+          the external scores.
         tables: []
 
   ongoing_monitoring:
@@ -269,8 +276,10 @@ documents:
         guidance: Describe who is informed and what happens at amber and red.
         template: >-
           Amber results are reported to the model owner with an action plan. Red results are escalated
-          to the model risk committee; use of the model is restricted or an overlay applied until the
-          issue is resolved.
+          to the model risk committee; use of the champion is restricted or an overlay applied until the
+          issue is resolved. If the champion is suspended, for example on a red stability result, a
+          constraint failure or loss of the external scores, decisions fall back to the benchmark
+          challenger, {roles.challenger_desc}, which is scored on every run.
         tables: []
       - id: known_issues
         title: Known weaknesses to watch

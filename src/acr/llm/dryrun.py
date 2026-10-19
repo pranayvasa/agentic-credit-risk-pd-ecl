@@ -54,12 +54,22 @@ def critic_response(iteration: int, payload: dict) -> str:
                               f"{_f(cmp_['diff'])} (95% CI {_f(cmp_['ci_low'])} to {_f(cmp_['ci_high'])}). "
                               "The development document must justify accepting this loss of "
                               "discrimination for interpretability."})  # fmt: skip
+    if cmp_ and f.get("roles", {}).get("champion") == "lightgbm" and f.get("explain"):
+        ex = f["explain"]
+        out.append({"id": "C1", "severity": "medium", "area": "Governance",
+                    "title": "A complex champion must earn its higher model tier",
+                    "detail": f"The champion leads the scorecard by {_f(cmp_['champion_lead'])} OOT Gini "
+                              f"(95% CI for challenger minus champion {_f(cmp_['ci_low'])} to "
+                              f"{_f(cmp_['ci_high'])}). Its explanations rest on SHAP and monotonic "
+                              f"constraints ({ex['monotone']['violating_rows']} violations found). The "
+                              "reason codes must be shown to be understandable to customers, and the "
+                              "fallback to the scorecard must be tested, not just documented."})  # fmt: skip
     share = f.get("external_score_share", 0)
-    if share > 0.5:
-        out.append({"id": "C2", "severity": "medium", "area": "Conceptual soundness",
+    if share > 0:
+        out.append({"id": "C2", "severity": "medium" if share > 0.5 else "low", "area": "Conceptual soundness",
                     "title": "Dependence on undisclosed external scores",
-                    "detail": f"External scores carry {share:.1%} of the points range. Their "
-                              "construction is unknown, so a change at the provider would move "
+                    "detail": f"External scores carry {share:.1%} of the champion's explanatory weight. "
+                              "Their construction is unknown, so a change at the provider would move "
                               "PDs without any change in this model."})  # fmt: skip
     ecl = f.get("ecl")
     if ecl:

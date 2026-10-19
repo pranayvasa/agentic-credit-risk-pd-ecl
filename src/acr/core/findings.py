@@ -51,53 +51,42 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
                 "Monitor closely; set an early-warning trigger in the monitoring plan.",
             )
 
-    gap = ch["train"]["gini"] - ch["oot"]["gini"]
-    if gap > v.overfit_gap_medium:
-        add(
-            "Performance",
-            "medium",
-            "Champion overfitting",
-            f"Train Gini {ch['train']['gini']:.4f} (AUC {ch['train']['auc']:.4f}) exceeds OOT Gini "
-            f"{ch['oot']['gini']:.4f} (AUC {ch['oot']['auc']:.4f}) by {gap:.4f} "
-            f"(threshold {v.overfit_gap_medium:.2f}).",
-            "Simplify the scorecard or strengthen selection.",
-        )
+    roles = m.get("roles", {"champion": "champion", "challenger": "challenger"})
+    names = {"lightgbm": "monotone LightGBM", "scorecard": "WoE scorecard"}
+    ch_name = names.get(roles["champion"], "champion")
+    cl_name = names.get(roles["challenger"], "challenger")
     cl = m["challenger"]["performance"]
-    cl_gap = cl["train"]["gini"] - cl["oot"]["gini"]
-    if cl_gap > v.overfit_gap_medium:
-        add(
-            "Benchmarking",
-            "medium",
-            "Challenger overfits the training data",
-            f"LightGBM train Gini {cl['train']['gini']:.4f} (AUC {cl['train']['auc']:.4f}) vs OOT "
-            f"Gini {cl['oot']['gini']:.4f} (AUC {cl['oot']['auc']:.4f}); gap {cl_gap:.4f}, "
-            f"threshold {v.overfit_gap_medium:.2f}.",
-            "Treat challenger train metrics as optimistic; compare on holdout only.",
-        )
+    for role, name, p in (("Champion", ch_name, ch), ("Challenger", cl_name, cl)):
+        gap = p["train"]["gini"] - p["oot"]["gini"]
+        if gap > v.overfit_gap_medium:
+            add(
+                "Performance" if role == "Champion" else "Benchmarking",
+                "medium",
+                f"{role} ({name}) overfits the training data",
+                f"Train Gini {p['train']['gini']:.4f} (AUC {p['train']['auc']:.4f}) vs OOT Gini "
+                f"{p['oot']['gini']:.4f} (AUC {p['oot']['auc']:.4f}); gap {gap:.4f}, threshold "
+                f"{v.overfit_gap_medium:.2f}.",
+                "Simplify the model or strengthen regularisation; compare on holdout only.",
+            )
 
-    cmp_ = m["comparison"]
+    cmp_ = m["comparison"]  # diff = challenger Gini - champion Gini on OOT
+    detail = (f"Champion ({ch_name}) OOT Gini {ch['oot']['gini']:.4f} (AUC {ch['oot']['auc']:.4f}) vs "
+              f"challenger ({cl_name}) {cl['oot']['gini']:.4f} (AUC {cl['oot']['auc']:.4f}); "
+              f"challenger minus champion {cmp_['diff']:.4f} (95% bootstrap CI {cmp_['ci_low']:.4f} "
+              f"to {cmp_['ci_high']:.4f}; AUC difference {cmp_['diff'] / 2:.4f}).")  # fmt: skip
     if cmp_["diff"] > v.challenger_gap_medium:
-        add(
-            "Benchmarking",
-            "medium",
-            "Challenger materially outperforms champion",
-            f"Challenger OOT Gini {cl['oot']['gini']:.4f} (AUC {cl['oot']['auc']:.4f}) vs champion "
-            f"{ch['oot']['gini']:.4f} (AUC {ch['oot']['auc']:.4f}): Gini difference "
-            f"{cmp_['diff']:.4f} (95% bootstrap CI {cmp_['ci_low']:.4f} to {cmp_['ci_high']:.4f}; "
-            f"AUC difference {cmp_['diff'] / 2:.4f}) exceeds {v.challenger_gap_medium:.2f}.",
-            "Document why the interpretable scorecard is preferred, or investigate the non-linear "
-            "effects the challenger captures (interactions, finer bins).",
-        )
+        add("Benchmarking", "medium", "Challenger materially outperforms champion",
+            detail + f" The gap exceeds {v.challenger_gap_medium:.2f}.",
+            "Document why the champion is preferred, or review the champion choice.")  # fmt: skip
     elif cmp_["ci_low"] > 0:
-        add(
-            "Benchmarking",
-            "low",
-            "Challenger outperforms champion, within tolerance",
-            f"OOT Gini difference {cmp_['diff']:.4f} (95% CI {cmp_['ci_low']:.4f} to "
-            f"{cmp_['ci_high']:.4f}; AUC difference {cmp_['diff'] / 2:.4f}) is significant but "
-            f"below {v.challenger_gap_medium:.2f}.",
-            "Acceptable cost of interpretability; keep under review.",
-        )
+        add("Benchmarking", "low", "Challenger outperforms champion, within tolerance",
+            detail + f" Significant but below {v.challenger_gap_medium:.2f}.",
+            "Keep under review.")  # fmt: skip
+    elif cmp_["ci_high"] < 0:
+        add("Benchmarking", "info", "Champion outperforms the benchmark",
+            detail + " The champion's added complexity is supported by a significant gain in "
+            "discrimination over the benchmark.",
+            "Keep the benchmark as a documented fallback and monitor the gap.")  # fmt: skip
 
     sp = m["stability"]["score_psi"]
     worst = max(sp.values())
@@ -274,16 +263,22 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
         )
 
     share = m["external_score_share"]
-    if share > v.external_score_share_max:
+    measure = (
+        "of mean absolute SHAP"
+        if roles["champion"] == "lightgbm"
+        else "of the scorecard's points range"
+    )
+    if share > 0:
         add(
             "Conceptual soundness",
-            "medium",
-            "Heavy reliance on undisclosed external scores",
-            f"EXT_SOURCE features contribute {share:.0%} of the scorecard's points range "
-            f"(threshold {v.external_score_share_max:.0%}); their provider and construction are "
-            "not disclosed.",
-            "Obtain documentation of the external scores. Without them OOT Gini falls from about 0.50 to 0.40 and the gate fails (docs/sensitivity_ext_source.md).",
-        )
+            "medium" if share > v.external_score_share_max else "low",
+            "Champion uses undisclosed external scores",
+            f"EXT_SOURCE features carry {share:.0%} {measure} in the champion (threshold "
+            f"{v.external_score_share_max:.0%}); their provider and construction are not disclosed, "
+            "so they are third-party model inputs.",
+            "Obtain documentation of the external scores and monitor their availability. Without "
+            "them performance falls materially (docs/sensitivity_ext_source.md).",
+        )  # fmt: skip
 
     ex = m.get("explain")
     if ex:
@@ -320,16 +315,16 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             add(
                 "Explainability",
                 "medium",
-                "Challenger explanations could not be assessed",
-                "Mean absolute SHAP is zero in at least one sample: the challenger made no splits, "
+                "LightGBM explanations could not be assessed",
+                "Mean absolute SHAP is zero in at least one sample: the LightGBM model made no splits, "
                 "usually because min_child_samples exceeds the data available.",
-                "Review the challenger's parameters for this data size.",
+                "Review the LightGBM parameters for this data size.",
             )
         elif lo_overlap < v.shap_top_overlap_min or lo_rho < v.shap_spearman_min:
             add(
                 "Explainability",
                 "medium",
-                "Challenger explanations are unstable",
+                "LightGBM explanations are unstable",
                 f"Lowest top-{st['test_vs_oot']['top_n']} driver overlap {lo_overlap:.0%} (minimum "
                 f"{v.shap_top_overlap_min:.0%}); lowest rank correlation {lo_rho:.3f} (minimum "
                 f"{v.shap_spearman_min}).",
@@ -339,25 +334,23 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             add(
                 "Explainability",
                 "info",
-                "Challenger explanations are stable",
+                "LightGBM explanations are stable",
                 f"Top-{st['test_vs_oot']['top_n']} SHAP drivers overlap at least {lo_overlap:.0%} across OOT "
                 f"halves, test vs OOT and train vs OOT; rank correlation at least {lo_rho:.3f}.",
             )
-        if ex["external_score_share"] > v.external_score_share_max:
-            add(
-                "Explainability",
-                "medium",
-                "Challenger relies heavily on external scores",
+        if (
+            roles["champion"] != "lightgbm"
+            and ex["external_score_share"] > v.external_score_share_max
+        ):
+            add("Explainability", "medium", "LightGBM relies heavily on external scores",
                 f"EXT_SOURCE features carry {ex['external_score_share']:.0%} of mean absolute SHAP "
-                f"(threshold {v.external_score_share_max:.0%}).",
-                "As for the champion: document the scores.",
-            )
+                f"(threshold {v.external_score_share_max:.0%}).", "Document the scores.")  # fmt: skip
         for g, r in ex["gender_pd_to_dr"].items():
             if abs(r - 1) > v.calibration_ratio_tol:
                 add(
                     "Fairness",
                     "medium",
-                    f"Challenger calibration off for gender = {g}",
+                    f"LightGBM calibration off for gender = {g}",
                     f"Mean PD / default rate {r:.3f} (tolerance ±{v.calibration_ratio_tol:.0%}).",
                     "Investigate proxies; gender is not a model input.",
                 )

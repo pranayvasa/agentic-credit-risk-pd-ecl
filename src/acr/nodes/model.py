@@ -1,8 +1,12 @@
-"""Node 5: modelling. Champion WoE scorecard, LightGBM challenger, calibration, master scale.
+"""Node 5: modelling. WoE logistic scorecard and monotone LightGBM, calibration, master scale.
 
-Also fits the application-leg-only "origination proxy" scorecard used by the ECL layer's
-relative SICR test (decision D6). All fitting uses train only; predictions are written for
-every partition so the validator can evaluate them without touching the models.
+Both models are always built. ``model.champion`` in config assigns the roles: the champion
+drives gates, ECL, documents and reason codes; the other model is the benchmark challenger and
+documented fallback (decision D33). Scored columns ``pd_champion`` / ``pd_challenger`` follow
+the roles; ``pd_scorecard`` / ``pd_lightgbm`` always name the models.
+
+Also fits the application-leg-only "origination proxy" in the champion's model family, used by
+the ECL layer's relative SICR test (decision D6). All fitting uses train only.
 """
 
 from __future__ import annotations
@@ -36,9 +40,9 @@ def _oof(fit_predict, X: pd.DataFrame, y: pd.Series, folds: int, seed: int) -> n
 
 @node(
     "model",
-    role="Fit the champion WoE logistic scorecard and LightGBM challenger on train; decide "
-    "calibration from out-of-fold train predictions; map PD to the master scale; fit the "
-    "application-only origination-proxy scorecard for ECL staging.",
+    role="Fit the WoE logistic scorecard and monotone LightGBM on train; assign champion and "
+    "challenger roles from config; decide calibration from out-of-fold train predictions; map PD "
+    "to the master scale; fit an application-only origination proxy in the champion's family.",
     reads=["config", "split", "selection"],
     writes=["model"],
 )
@@ -63,7 +67,7 @@ def model(view):
     W = B.woe(bp, features[live], cat_live)
     Wtr = require_partition(W.loc[train_ids], a.reset_index(), "train")
 
-    # --- champion scorecard ---
+    # --- WoE logistic scorecard ---
     sel = meta["selected"]
     sc = fit_scorecard(Wtr, ytr, sel, m.scorecard)
 
@@ -75,15 +79,7 @@ def model(view):
     pd_ch_raw = sc.predict_pd(W)
     pd_ch = cal_ch.apply(pd_ch_raw)
 
-    # --- origination proxy: application leg only ---
-    app_feats = [f for f in meta["screened"] if dictionary.loc[f, "leg"] == "application"]
-    iv = B.iv_table(bp, live).set_index("feature")["iv"]
-    proxy_log: list[dict] = []
-    proxy_feats = prune(Wtr, ytr, app_feats, iv, c.base.features, proxy_log)
-    proxy = fit_scorecard(Wtr, ytr, proxy_feats, m.scorecard)
-    pd_proxy = proxy.predict_pd(W)
-
-    # --- challenger ---
+    # --- monotone LightGBM ---
     excluded = set(c.base.features.exclude_features)
     cands = [f for f in meta["candidates"] if f in live and f not in excluded]
     Xtr = require_partition(features.loc[train_ids, cands], a.reset_index(), "train")
@@ -105,25 +101,45 @@ def model(view):
     cal_cl = decide(ytr, oof_cl, m.calibration)
     pd_cl = cal_cl.apply(C.predict_pd(lgbm, features[cands], cat_live))
 
+    # --- origination proxy: application leg only, in the champion's model family ---
+    champ = m.champion
+    if champ == "lightgbm":
+        app_cands = [f for f in cands if dictionary.loc[f, "leg"] == "application"]
+        app_signs = {f: signs[f] for f in app_cands} if signs else None
+        proxy = C.fit_challenger(Xtr[app_cands], ytr, [f for f in cat_live if f in app_cands],
+                                 dict(m.lightgbm), m.lightgbm_fit, seed, app_signs)  # fmt: skip
+        pd_proxy = C.predict_pd(proxy, features[app_cands], [f for f in cat_live if f in app_cands])
+        proxy_feats, proxy_type = app_cands, "monotone LightGBM, application leg only"
+    else:
+        app_feats = [f for f in meta["screened"] if dictionary.loc[f, "leg"] == "application"]
+        iv = B.iv_table(bp, live).set_index("feature")["iv"]
+        proxy_feats = prune(Wtr, ytr, app_feats, iv, c.base.features, [])
+        proxy = fit_scorecard(Wtr, ytr, proxy_feats, m.scorecard)
+        pd_proxy = proxy.predict_pd(W)
+        proxy_type = "WoE logistic regression, application leg only"
+
     bounds = m.master_scale.pd_upper_bounds
+    pds = {"scorecard": pd_ch, "lightgbm": pd_cl}
+    chal = "scorecard" if champ == "lightgbm" else "lightgbm"
     scored = pd.DataFrame({
         "partition": a["partition"].astype(str).reindex(features.index),
         "TARGET": y.reindex(features.index),
-        "score": sc.score(W), "pd_champion_raw": pd_ch_raw, "pd_champion": pd_ch,
-        "grade_champion": assign_grade(pd_ch, bounds),
-        "pd_challenger": pd_cl, "grade_challenger": assign_grade(pd_cl, bounds),
+        "score": sc.score(W), "pd_scorecard_raw": pd_ch_raw,
+        "pd_scorecard": pd_ch, "pd_lightgbm": pd_cl,
+        "pd_champion": pds[champ], "grade_champion": assign_grade(pds[champ], bounds),
+        "pd_challenger": pds[chal], "grade_challenger": assign_grade(pds[chal], bounds),
         "pd_origination_proxy": pd_proxy, "grade_origination_proxy": assign_grade(pd_proxy, bounds),
     }, index=features.index)  # fmt: skip
 
     out = artefact_dir(view, "model")
     bin_tables = B.binning_tables(bp, sel)
     files = {
-        "scored": out / "scored.parquet", "scorecard": out / "champion_scorecard.pkl",
-        "coefficients": out / "champion_coefficients.csv", "points": out / "scorecard_points.csv",
-        "proxy": out / "origination_proxy_scorecard.pkl", "challenger": out / "challenger_lgbm.txt",
-        "importance": out / "challenger_importance.csv", "master_scale": out / "master_scale.csv",
+        "scored": out / "scored.parquet", "scorecard": out / "scorecard.pkl",
+        "coefficients": out / "scorecard_coefficients.csv", "points": out / "scorecard_points.csv",
+        "proxy": out / "origination_proxy.pkl", "lightgbm": out / "lightgbm.txt",
+        "importance": out / "lightgbm_gain_importance.csv", "master_scale": out / "master_scale.csv",
         "calibration": out / "calibration.json",
-        "monotone": out / "challenger_monotone_constraints.json",
+        "monotone": out / "lightgbm_monotone_constraints.json",
     }  # fmt: skip
     external = scored.drop(index=a.index).drop(columns=["partition", "TARGET"])
     scored = scored.loc[a.index]
@@ -147,54 +163,61 @@ def model(view):
         pickle.dump(proxy, f)
     sc.coef_table.to_csv(files["coefficients"], index=False)
     sc.points_table(bin_tables).to_csv(files["points"], index=False)
-    lgbm.booster_.save_model(str(files["challenger"]))
+    lgbm.booster_.save_model(str(files["lightgbm"]))
     C.importance(lgbm).to_csv(files["importance"], index=False)
     scale_table(bounds).to_csv(files["master_scale"], index=False)
-    calib = {"champion": cal_ch.__dict__, "challenger": cal_cl.__dict__}
+    calib = {"scorecard": cal_ch.__dict__, "lightgbm": cal_cl.__dict__}
+    calib = {**calib, "champion": calib[champ], "challenger": calib[chal]}
     files["calibration"].write_text(json.dumps(calib, indent=2))
     files["monotone"].write_text(json.dumps({"enabled": bool(signs), "method": m.lightgbm_fit.monotone_method,
                                              "signs": signs or {}}, indent=2))  # fmt: skip
 
     tr = scored.loc[train_ids]
+
+    def _g(col):
+        return round(gini(tr["TARGET"], tr[col]), 4)
+
+    summaries = {
+        "scorecard": {
+            "model": "scorecard",
+            "type": "WoE logistic regression scorecard",
+            "n_features": len(sel),
+            "intercept": round(sc.intercept, 6),
+            "coefficients": {k: round(v, 6) for k, v in sc.coefs.items()},
+            "calibration": cal_ch.reason, "calibration_applied": cal_ch.applied,
+            "train_gini": _g("pd_scorecard"), "train_auc": round((_g("pd_scorecard") + 1) / 2, 4),
+            "train_ks": round(ks(tr["TARGET"], tr["pd_scorecard"]), 4),
+            "oof_gini": round(gini(ytr, oof_ch), 4), "oof_auc": round((gini(ytr, oof_ch) + 1) / 2, 4),
+            "scaling": {"pdo": sc.pdo, "base_score": sc.base_score, "base_odds": sc.base_odds},
+        },
+        "lightgbm": {
+            "model": "lightgbm",
+            "type": "monotone LightGBM gradient boosting" if signs else "LightGBM gradient boosting",
+            "n_features": len(cands),
+            "n_trees": n_trees,
+            "monotone": {
+                "enabled": bool(signs),
+                "method": m.lightgbm_fit.monotone_method,
+                "increasing": sum(v == 1 for v in (signs or {}).values()),
+                "decreasing": sum(v == -1 for v in (signs or {}).values()),
+                "free": sum(v == 0 for v in (signs or {}).values()),
+            },
+            "calibration": cal_cl.reason, "calibration_applied": cal_cl.applied,
+            "train_gini": _g("pd_lightgbm"), "train_auc": round((_g("pd_lightgbm") + 1) / 2, 4),
+            "oof_gini": round(gini(ytr, oof_cl), 4), "oof_auc": round((gini(ytr, oof_cl) + 1) / 2, 4),
+        },
+    }  # fmt: skip
     return {
         "model": {
-            "champion": {
-                "type": "WoE logistic regression scorecard",
-                "n_features": len(sel),
-                "intercept": round(sc.intercept, 6),
-                "coefficients": {k: round(v, 6) for k, v in sc.coefs.items()},
-                "calibration": cal_ch.reason,
-                "calibration_applied": cal_ch.applied,
-                "train_gini": round(gini(tr["TARGET"], tr["pd_champion"]), 4),
-                "train_auc": round((gini(tr["TARGET"], tr["pd_champion"]) + 1) / 2, 4),
-                "train_ks": round(ks(tr["TARGET"], tr["pd_champion"]), 4),
-                "oof_gini": round(gini(ytr, oof_ch), 4),
-                "oof_auc": round((gini(ytr, oof_ch) + 1) / 2, 4),
-                "scaling": {"pdo": sc.pdo, "base_score": sc.base_score, "base_odds": sc.base_odds},
-            },
-            "challenger": {
-                "type": "LightGBM gradient boosting",
-                "n_features": len(cands),
-                "n_trees": n_trees,
-                "monotone": {
-                    "enabled": bool(signs),
-                    "method": m.lightgbm_fit.monotone_method,
-                    "increasing": sum(v == 1 for v in (signs or {}).values()),
-                    "decreasing": sum(v == -1 for v in (signs or {}).values()),
-                    "free": sum(v == 0 for v in (signs or {}).values()),
-                },
-                "calibration": cal_cl.reason,
-                "calibration_applied": cal_cl.applied,
-                "train_gini": round(gini(tr["TARGET"], tr["pd_challenger"]), 4),
-                "train_auc": round((gini(tr["TARGET"], tr["pd_challenger"]) + 1) / 2, 4),
-                "oof_gini": round(gini(ytr, oof_cl), 4),
-                "oof_auc": round((gini(ytr, oof_cl) + 1) / 2, 4),
-            },
+            "roles": {"champion": champ, "challenger": chal},
+            **summaries,
+            "champion": summaries[champ],
+            "challenger": summaries[chal],
             "origination_proxy": {
-                "type": "WoE logistic regression, application leg only (ECL SICR proxy, D6)",
+                "type": proxy_type + " (ECL SICR proxy, D6)",
                 "features": proxy_feats,
-                "train_gini": round(gini(tr["TARGET"], tr["pd_origination_proxy"]), 4),
-                "train_auc": round((gini(tr["TARGET"], tr["pd_origination_proxy"]) + 1) / 2, 4),
+                "train_gini": _g("pd_origination_proxy"),
+                "train_auc": round((_g("pd_origination_proxy") + 1) / 2, 4),
             },
             "external": {
                 "n_scored": int(len(external)),

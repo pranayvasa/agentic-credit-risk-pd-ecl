@@ -46,8 +46,9 @@ def _decile_edges(train_score: pd.Series) -> np.ndarray:
     return edges
 
 
-def score_psi(scored: pd.DataFrame, col: str = "score") -> dict:
-    """PSI of the score distribution, with deciles defined on train."""
+def score_psi(scored: pd.DataFrame, col: str = "pd_champion") -> dict:
+    """PSI of the champion's PD distribution over train-defined deciles (deciles of PD and of a
+    monotone score are the same, so this equals score PSI)."""
     edges = _decile_edges(scored.loc[scored["partition"] == "train", col])
     b = pd.cut(scored[col], edges, labels=False)
     base = b[scored["partition"] == "train"]
@@ -61,7 +62,7 @@ def grade_psi(scored: pd.DataFrame, grade_col: str) -> dict:
 
 
 def stress_psi(scored: pd.DataFrame, age_years: pd.Series, young_weight: float,
-               col: str = "score") -> float:  # fmt: skip
+               col: str = "pd_champion") -> float:  # fmt: skip
     """Illustrative drift: weight OOT applicants under 30 by ``young_weight`` and recompute
     the score PSI against train. Shows the PSI gate firing on a shifted book."""
     edges = _decile_edges(scored.loc[scored["partition"] == "train", col])

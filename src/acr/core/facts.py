@@ -21,6 +21,14 @@ MAX_PAYLOAD_CHARS = 60_000
 FORBIDDEN_KEYS = {"SK_ID_CURR", "SK_ID_PREV", "SK_ID_BUREAU"}
 
 
+DESC = {
+    "lightgbm": lambda m: (f"a monotonically constrained LightGBM model on {m['lightgbm']['n_features']} "
+                           f"features ({m['lightgbm']['n_trees']} trees)"),
+    "scorecard": lambda m: (f"a {m['scorecard']['n_features']}-variable weight-of-evidence logistic "
+                            "regression scorecard"),
+}  # fmt: skip
+
+
 def _perf(p: Mapping) -> dict:
     return {
         k: p[k] for k in ("n", "defaults", "default_rate", "mean_pd", "auc", "gini", "ks", "brier")
@@ -82,23 +90,38 @@ def build_facts(state: Mapping[str, Any]) -> dict:
                 {"feature": s["feature"], "leg": s["leg"], "iv": s["iv"]} for s in sel["selected"]
             ],  # fmt: skip
         },
+        "roles": {
+            "champion": mdl["roles"]["champion"],
+            "challenger": mdl["roles"]["challenger"],
+            "champion_desc": DESC[mdl["roles"]["champion"]](mdl),
+            "challenger_desc": DESC[mdl["roles"]["challenger"]](mdl),
+        },
         "champion": {
+            "model": mdl["champion"]["model"],
             "type": mdl["champion"]["type"],
             "n_features": mdl["champion"]["n_features"],
             "calibration_decision": mdl["champion"]["calibration"],
-            "calibration_oof": {
-                k: calib.get("champion", {}).get(k)
-                for k in ("oof_ece", "oof_slope", "oof_intercept")
-            },
-            "scaling": mdl["champion"]["scaling"],
         },
         "challenger": {
+            "model": mdl["challenger"]["model"],
             "type": mdl["challenger"]["type"],
             "n_features": mdl["challenger"]["n_features"],
-            "n_trees": mdl["challenger"]["n_trees"],
             "calibration_decision": mdl["challenger"]["calibration"],
+        },
+        "scorecard": {
+            "n_features": mdl["scorecard"]["n_features"],
             "calibration_oof": {
-                k: calib.get("challenger", {}).get(k)
+                k: calib.get("scorecard", {}).get(k)
+                for k in ("oof_ece", "oof_slope", "oof_intercept")
+            },
+            "scaling": mdl["scorecard"]["scaling"],
+        },
+        "lightgbm": {
+            "n_features": mdl["lightgbm"]["n_features"],
+            "n_trees": mdl["lightgbm"]["n_trees"],
+            "monotone": mdl["lightgbm"]["monotone"],
+            "calibration_oof": {
+                k: calib.get("lightgbm", {}).get(k)
                 for k in ("oof_ece", "oof_slope", "oof_intercept")
             },
             "params": {
@@ -110,9 +133,12 @@ def build_facts(state: Mapping[str, Any]) -> dict:
                     "reg_lambda",
                     "learning_rate",
                 )
-            },  # fmt: skip
+            },
         },
-        "origination_proxy": {"features": mdl["origination_proxy"]["features"]},
+        "origination_proxy": {
+            "type": mdl["origination_proxy"]["type"],
+            "n_features": len(mdl["origination_proxy"]["features"]),
+        },
         "thresholds": {
             "gini_min_test": gate["gini_min_test"],
             "gini_min_oot": gate["gini_min_oot"],
@@ -160,7 +186,11 @@ def build_facts(state: Mapping[str, Any]) -> dict:
             seg = pd.read_csv(seg_path)
             seg = seg[seg["n"] >= gates["validation"]["segment_min_n"]]
             f["segments_oot"] = seg.round(6).to_dict(orient="records")
-        f["comparison"] = vm["comparison"] | {"auc_diff": vm["comparison"]["diff"] / 2}
+        f["comparison"] = vm["comparison"] | {
+            "auc_diff": vm["comparison"]["diff"] / 2,
+            "champion_lead": -vm["comparison"]["diff"],  # champion minus challenger
+            "champion_lead_auc": -vm["comparison"]["diff"] / 2,
+        }
         st = vm["stability"]
         f["stability"] = {"score_psi": st["score_psi"], "stress_psi": st["stress_psi"],
                           "csi_max": st["csi_max"], "external": st.get("external")}  # fmt: skip
@@ -178,8 +208,8 @@ def build_facts(state: Mapping[str, Any]) -> dict:
         f["explain"] = {k: ex[k] for k in ("method", "applicants_explained", "additivity_max_error",
                                            "top_features", "leg_shares", "external_score_share",
                                            "stability", "monotone", "reason_codes_per_applicant",
-                                           "gender_pd_to_dr")}  # fmt: skip
-        f["challenger"]["monotone"] = mdl["challenger"].get("monotone")
+                                           "gender_pd_to_dr", "family_shares",
+                                           "primary_reason_top_decile", "families") if k in ex}  # fmt: skip
     ecl = state.get("ecl")
     if ecl:
         f["ecl"] = {

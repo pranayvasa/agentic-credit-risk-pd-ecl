@@ -1,6 +1,6 @@
 # Ongoing Monitoring Plan — PD scorecard
 
-> Run `20261019T052034Z_full_975e6130602a` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
+> Run `20261019T055332Z_full_bd0bb86ae168` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
 
 ## 1. Objectives
 
@@ -8,7 +8,7 @@ Monitoring must detect loss of discrimination, calibration drift, population shi
 
 ## 2. Metrics and thresholds
 
-Thresholds are the same as those used at validation, so monitoring results are directly comparable with the validated baseline (OOT Gini 0.5008).
+Thresholds are the same as those used at validation, so monitoring results are directly comparable with the validated baseline (OOT Gini 0.5602).
 
 | Metric | Amber | Red | Frequency |
 |---|---|---|---|
@@ -24,7 +24,7 @@ Population stability and characteristic stability are reviewed monthly. Discrimi
 
 ## 4. Escalation
 
-Amber results are reported to the model owner with an action plan. Red results are escalated to the model risk committee; use of the model is restricted or an overlay applied until the issue is resolved.
+Amber results are reported to the model owner with an action plan. Red results are escalated to the model risk committee; use of the champion is restricted or an overlay applied until the issue is resolved. If the champion is suspended, for example on a red stability result, a constraint failure or loss of the external scores, decisions fall back to the benchmark challenger, a 13-variable weight-of-evidence logistic regression scorecard, which is scored on every run.
 
 ## 5. Known weaknesses to watch
 
@@ -32,18 +32,15 @@ The validation findings below set the monitoring priorities.
 
 | ID | Severity | Area | Finding |
 |---|---|---|---|
-| V01 | medium | Performance | Champion test Gini close to gate |
-| V02 | medium | Benchmarking | Challenger materially outperforms champion |
-| V03 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
-| V04 | info | Stability | External population (application_test) score distribution stable |
-| V05 | low | Calibration | Amber calibration in some grades (OOT) |
-| V06 | low | Master scale | Sparsely populated grades |
-| V07 | low | Segments | Segment calibration off in contract_type = Revolving loans |
-| V08 | low | Segments | Segment calibration off in income_type = Commercial associate |
-| V09 | low | Segments | Segment calibration off in income_type = Pensioner |
-| V10 | low | Segments | Segment calibration off in income_type = State servant |
-| V11 | low | Segments | Segment calibration off in age_band = <30 |
-| V12 | medium | Conceptual soundness | Heavy reliance on undisclosed external scores |
-| V13 | info | Explainability | Monotonic constraints verified |
-| V14 | info | Explainability | Challenger explanations are stable |
-| V15 | medium | Conceptual soundness | Target is not the regulatory default definition |
+| V01 | info | Benchmarking | Champion outperforms the benchmark |
+| V02 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
+| V03 | info | Stability | External population (application_test) score distribution stable |
+| V04 | medium | Calibration | PD under-predicts default in some grades (OOT) |
+| V05 | low | Calibration | Hosmer-Lemeshow rejects on OOT |
+| V06 | medium | Discrimination | Rank-ordering breaks across PD deciles (OOT) |
+| V07 | low | Master scale | Sparsely populated grades |
+| V08 | low | Segments | Segment calibration off in income_type = State servant |
+| V09 | low | Conceptual soundness | Champion uses undisclosed external scores |
+| V10 | info | Explainability | Monotonic constraints verified |
+| V11 | info | Explainability | LightGBM explanations are stable |
+| V12 | medium | Conceptual soundness | Target is not the regulatory default definition |

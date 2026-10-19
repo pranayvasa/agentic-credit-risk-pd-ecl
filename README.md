@@ -1,8 +1,8 @@
 # agentic-credit-risk-pd-ecl
 
-**An agent-orchestrated credit risk pipeline:** a probability-of-default (PD) scorecard on the public Home Credit Default Risk data, independently validated, extended to an illustrative RBI expected credit loss (ECL) calculation, and documented by LLM agents whose every number is machine-checked.
+**An agent-orchestrated credit risk pipeline:** a probability-of-default (PD) model on the public Home Credit Default Risk data, independently validated, extended to an illustrative RBI expected credit loss (ECL) calculation, and documented by LLM agents whose every number is machine-checked.
 
-A [LangGraph](https://github.com/langchain-ai/langgraph) state machine runs 17 nodes. Four "leg" agents build 114 documented features in parallel from seven tables. A WoE logistic regression scorecard (champion) and a depth-limited LightGBM model (challenger) are fitted on train only. A read-only validator applies Gini, KS, PSI, calibration and segment tests and raises findings with severities; red findings halt the run. Surviving models feed a staged, scenario-weighted ECL simulation under the RBI Directions RBI/DOR/2026-27/398. An LLM critic then challenges the results, and may only request whitelisted deterministic analyses. A documentation agent drafts a Model Development Document, Independent Validation Report, Ongoing Monitoring Plan and ECL Methodology Note. Finally, a grounding check verifies every number in those documents against the run's own results.
+A [LangGraph](https://github.com/langchain-ai/langgraph) state machine runs 18 nodes. Four "leg" agents build 114 documented features in parallel from seven tables. A **monotonically constrained LightGBM model (champion)** and a WoE logistic regression scorecard (interpretable benchmark and fallback) are fitted on train only. Exact SHAP explanations give every applicant grouped reason codes. A read-only validator applies Gini, KS, PSI, calibration and segment tests and raises findings with severities; red findings halt the run. Surviving models feed a staged, scenario-weighted ECL simulation under the RBI Directions RBI/DOR/2026-27/398. An LLM critic then challenges the results, and may only request whitelisted deterministic analyses. A documentation agent drafts a Model Development Document, Independent Validation Report, Ongoing Monitoring Plan and ECL Methodology Note. Finally, a grounding check verifies every number in those documents against the run's own results.
 
 > ### Core design principle
 > **LLM agents never fit, tune or alter the model.** The modelling core is deterministic and reproducible: fixed seed, versioned YAML config, and the same inputs give the same numbers (enforced by tests and artefact checksums). LLM agents sit *around* that core to critique and document, mirroring first-line development versus second-line independent validation. In this repo an "agent" is a graph node with a declared contract; only two nodes (`critic` and `document`) call an LLM.
@@ -12,7 +12,7 @@ Public data only. This is a portfolio project, not a production model and not an
 ---
 
 ## Contents
-[The graph](#the-graph) · [Execution order](#execution-order-node-by-node) · [Data flow](#data-flow) · [Typed state](#the-typed-state-in-plain-english) · [Fan-out and join](#parallel-fan-out-and-join-the-four-legs) · [Critic loop](#the-critic-loop) · [Controls](#model-risk-controls) · [Results](#results) · [Findings](#validation-findings) · [Regulatory mapping](#regulatory-mapping) · [How to run](#how-to-run) · [Cost](#cost) · [Limitations](#limitations) · [Project structure](#project-structure) · [About the author](#about-the-author)
+[The graph](#the-graph) · [Execution order](#execution-order-node-by-node) · [Data flow](#data-flow) · [Typed state](#the-typed-state-in-plain-english) · [Fan-out and join](#parallel-fan-out-and-join-the-four-legs) · [Champion and explainability](#champion-choice-and-explainability) · [Critic loop](#the-critic-loop) · [Controls](#model-risk-controls) · [Results](#results) · [Findings](#validation-findings) · [Regulatory mapping](#regulatory-mapping) · [How to run](#how-to-run) · [Cost](#cost) · [Limitations](#limitations) · [Project structure](#project-structure) · [About the author](#about-the-author)
 
 ---
 
@@ -94,8 +94,8 @@ Every node is wrapped by a `@node(reads=..., writes=...)` contract (`src/acr/aud
 | 5 | `leg_behavioural` | Repayment behaviour on prior Home Credit loans. Aggregates installments_payments, POS_CASH_balance, credit_card_balance to SK_ID_CURR; leg-level quality checks; writes a feature table and feature dictionary. | `config`, `split`, `dq` | `legs` | no | A critical leg quality failure (e.g. duplicate IDs) raises and stops the run. |
 | 6 | `leg_previous` | Earlier applications to Home Credit. Aggregates previous_application to SK_ID_CURR; leg-level quality checks; writes a feature table and feature dictionary. | `config`, `split`, `dq` | `legs` | no | A critical leg quality failure (e.g. duplicate IDs) raises and stops the run. |
 | 7 | `select` | Join the four legs; select scorecard features on train only by missingness, IV, train-vs-test CSI, correlation, VIF, a size cap and coefficient sign/significance; log every exclusion with a reason. | `config`, `split`, `legs` | `selection` | no | Exception propagates; run stops and the audit trail records the error. |
-| 8 | `model` | Fit the champion WoE logistic scorecard and LightGBM challenger on train; decide calibration from out-of-fold train predictions; map PD to the master scale; fit the application-only origination-proxy scorecard for ECL staging. | `config`, `split`, `selection` | `model` | no | Exception propagates; run stops and the audit trail records the error. |
-| 9 | `explain` | Exact TreeSHAP explanations of the LightGBM challenger: global and per-leg importance, top-4 reason codes for every OOT applicant, stability of the top drivers, and a direct test that the monotonic constraints hold. Reads the saved model; never refits. | `config`, `split`, `selection`, `model` | `explain` | no | Exception propagates; run stops and the audit trail records the error. |
+| 8 | `model` | Fit the WoE logistic scorecard and monotone LightGBM on train; assign champion and challenger roles from config; decide calibration from out-of-fold train predictions; map PD to the master scale; fit an application-only origination proxy in the champion's family. | `config`, `split`, `selection` | `model` | no | Exception propagates; run stops and the audit trail records the error. |
+| 9 | `explain` | Exact TreeSHAP explanations of the LightGBM model (champion under D33): global and per-leg importance, top-4 reason codes for every OOT applicant, stability of the top drivers, and a direct test that the monotonic constraints hold. Reads the saved model; never refits. | `config`, `split`, `selection`, `model` | `explain` | no | Exception propagates; run stops and the audit trail records the error. |
 | 10 | `validate` | Independent second-line validation over scored outputs: Gini/AUC/KS by partition, score PSI and feature CSI, calibration (HL, ECE, slope, grade-level binomial tests), rank-ordering, segments, champion vs challenger with bootstrap CI; structured findings; performance and stability gates. Read-only: artefact checksums verified before and after. | `config`, `sample_frac`, `split`, `model`, `selection`, `explain` | `validation`, `gate_log` | no | A red finding with gate enforcement on routes to the halt node with a halt report. |
 | 11 | `ecl` | Illustrative RBI ECL on the OOT book: stage allocation with audited triggers, 12-month and lifetime PD (constant hazard and bureau DPD Markov chain), amortising EAD, EIR discounting, weighted macro scenarios, LGD backstop and sensitivity, RBI stage floors. | `config`, `split`, `dq`, `selection`, `model` | `ecl` | no | Exception propagates; run stops and the audit trail records the error. |
 | 12 | `critic` | LLM second-line challenger: reviews validation and ECL summaries, may request whitelisted deterministic analyses. Cannot change the model. | `config`, `config_hash`, `sample_frac`, `dq`, `split`, `selection`, `model`, `explain`, `validation`, `ecl`, `extra_analyses`, `critic_iteration` | `critic_reviews`, `critic_requests`, `critic_iteration`, `llm_calls` | yes | If no LLM is available the node records a skip and the pipeline continues. |
@@ -129,8 +129,9 @@ flowchart LR
   S --> L3[behavioural leg]
   S --> L4[previous leg]
   L1 & L2 & L3 & L4 --> F[select<br/>WoE binning, IV, CSI, corr, VIF, train only]
-  F --> M[model<br/>WoE scorecard + LightGBM + origination proxy]
-  M --> V[validate<br/>read-only, findings, gate]
+  F --> M[model<br/>monotone LightGBM champion + WoE scorecard benchmark + origination proxy]
+  M --> XP[explain<br/>SHAP, reason codes, constraint checks]
+  XP --> V[validate<br/>read-only, findings, gate]
   V --> E[ecl<br/>staging, lifetime PD, EAD, scenarios, floors]
   E --> K[critic LLM] <--> X[whitelisted analyses]
   K --> D[document LLM<br/>4 documents]
@@ -150,7 +151,8 @@ flowchart LR
 | `split` | partition counts, proportions and default rates, assignment hash, ID-list paths, the unlabelled external population | `split` |
 | `legs` | per leg: feature table path, feature dictionary path, leg-level quality checks (merged from four parallel writers) | four `leg_*` nodes |
 | `selection` | candidates, screens, selected features with IV/CSI/VIF, every exclusion with a reason | `select` |
-| `model` | champion and challenger summaries, calibration decision, artefact paths and **SHA-256 checksums** | `model` |
+| `model` | roles (champion, challenger), per-model summaries, calibration decision, artefact paths and **SHA-256 checksums** | `model` |
+| `explain` | SHAP importance by feature, leg and reason family; constraint-check and stability results; paths to per-applicant reason codes | `explain` |
 | `validation` | metrics by partition, calibration, stability, segments, benchmarking, structured findings, gate decision | `validate` |
 | `ecl` | staging counts and triggers, ECL by stage, scenario, method and LGD, QC checks | `ecl` |
 | `critic_iteration`, `critic_requests`, `critic_reviews`, `extra_analyses` | the bounded critic loop: its challenges, its requests and their deterministic results | `critic`, `run_extra_analyses` |
@@ -162,6 +164,18 @@ flowchart LR
 `split` has a static edge to each of `leg_application`, `leg_bureau`, `leg_behavioural` and `leg_previous`. LangGraph runs them in the same super-step, concurrently (bounded by `runtime.max_concurrency: 2` to keep the full run under about 4 GB on an 8 GB laptop). Each leg writes only its own entry under `legs`; the `merge_dicts` reducer combines them and **raises if two branches write the same key**. `select` is registered with `add_edge([four legs], "select")`, so it waits for all four.
 
 Legs are per-customer aggregations of that customer's own records and **never receive TARGET**. Tests check that leg code never references it, that features are identical when targets are shuffled, and that a customer's features don't depend on who else is in the run. Gender and marital status are tagged `segment_only`: they're used for fairness analysis, never offered to a model.
+
+## Champion choice and explainability
+
+The original brief made the WoE scorecard champion. On this data the LightGBM model ranks risk materially better (about 9–16% fewer eventual defaulters approved at the same approval rate on OOT), so it was promoted after its explainability was brought up to standard (decisions D32–D33):
+
+* **Monotonic constraints.** Every numeric feature's effect on PD may move in one direction only, taken from its train-only WoE trend (53 rising, 38 falling; categoricals free). A sweep test confirms there are no violations. No part of the model can contradict credit logic, for example "more days past due lowers PD".
+* **Exact explanations.** LightGBM's built-in TreeSHAP (`pred_contrib`) decomposes every prediction exactly, and the attributions reconcile to the model score to about 1e-14. No sampling or approximation is involved, so explanations are as reproducible as the scores.
+* **Reason codes in families.** Each applicant gets the top factors that raised their PD, grouped into nine reason families (external scores, Home Credit repayment history, bureau, affordability, and so on). Correlated features such as the three external scores and their mean are therefore stated once, as a decline letter needs.
+* **Stability.** The top-10 drivers are identical across OOT halves, test and train.
+* **Fallback.** The scorecard is scored on every run and documented as the fallback in the monitoring plan.
+
+The RBI draft MRM guidance (June 2026, **draft**) doesn't require logistic models. It treats explainability as a tiering factor and expects explainability thresholds and compensating controls for less explainable models used in material decisions; see the regulatory mapping below. SHAP explains how the model *attributes* a prediction, not cause and effect.
 
 ## The critic loop
 
@@ -189,51 +203,54 @@ After ECL, the `critic` node acts as a skeptical second-line validator. It recei
 All numbers below are filled in by `scripts/fill_readme.py` from a single run's `run_summary.json`.
 
 <!-- BEGIN:results -->
-From run `20261019T052034Z_full_975e6130602a` (full population, dry-run LLM mode, config hash `975e6130602a`).
+From run `20261019T055332Z_full_bd0bb86ae168` (full population, dry-run LLM mode, config hash `bd0bb86ae168`).
 
 **Discrimination and calibration** (Gini = 2 × AUC − 1)
 
 | Model | Partition | Gini | AUC | KS | Mean PD | Default rate |
 |---|---|---|---|---|---|---|
-| champion | train | 0.5041 | 0.7521 | 0.3782 | 8.07% | 8.07% |
-| champion | test | 0.4896 | 0.7448 | 0.3676 | 8.06% | 8.07% |
-| champion | oot | 0.5008 | 0.7504 | 0.3769 | 8.04% | 8.07% |
-| challenger | train | 0.6120 | 0.8060 | 0.4623 | 8.07% | 8.07% |
-| challenger | test | 0.5520 | 0.7760 | 0.4115 | 8.07% | 8.07% |
-| challenger | oot | 0.5602 | 0.7801 | 0.4263 | 8.08% | 8.07% |
+| champion (lightgbm) | train | 0.6120 | 0.8060 | 0.4623 | 8.07% | 8.07% |
+| champion (lightgbm) | test | 0.5520 | 0.7760 | 0.4115 | 8.07% | 8.07% |
+| champion (lightgbm) | oot | 0.5602 | 0.7801 | 0.4263 | 8.08% | 8.07% |
+| challenger (scorecard) | train | 0.5041 | 0.7521 | 0.3782 | 8.07% | 8.07% |
+| challenger (scorecard) | test | 0.4896 | 0.7448 | 0.3676 | 8.06% | 8.07% |
+| challenger (scorecard) | oot | 0.5008 | 0.7504 | 0.3769 | 8.04% | 8.07% |
 
 | Measure | Value |
 |---|---|
-| Champion OOT decile ECE / calibration slope | 0.0023 / 1.003 |
-| Challenger − champion OOT Gini (95% bootstrap CI) | 0.0594 (0.0524 to 0.0649) |
-| Score PSI train→test / train→OOT | 0.0001 / 0.0001 |
+| Champion OOT decile ECE / calibration slope | 0.0035 / 0.957 |
+| Champion lead over benchmark, OOT Gini (95% bootstrap CI) | 0.0594 (0.0524 to 0.0649) |
+| Score PSI train→test / train→OOT | 0.0004 / 0.0002 |
 | Largest selected-feature CSI | 0.0850 |
-| Stress PSI ladder (under-30s ×3 / ×10 / ×50) | 0.0206 / 0.1319 / 0.3391 |
-| Score PSI, unlabelled application_test (48,744) vs train | 0.0018 |
+| Stress PSI ladder (under-30s ×3 / ×10 / ×50) | 0.0152 / 0.0939 / 0.2334 |
+| LightGBM monotonic constraints: features tested / violations | 91 / 0 |
+| SHAP top-10 driver overlap, test vs OOT | 100% |
+| Score PSI, unlabelled application_test (48,744) vs train | 0.0072 |
 
 **Illustrative RBI ECL** on the OOT book (76,878 loans; LGD 70%; floors 1% / 5% / 25%)
 
 | Stage | Accounts | Exposure (m) | Final ECL (m) | Coverage | Realised default rate |
 |---|---|---|---|---|---|
-| stage 1 | 74,397 | 44,526.4 | 1,827.3 | 4.10% | 7.90% |
-| stage 2 | 2,410 | 1,440.7 | 206.4 | 14.32% | 12.99% |
+| stage 1 | 73,235 | 43,986.7 | 1,741.2 | 3.96% | 7.63% |
+| stage 2 | 3,572 | 1,980.4 | 314.1 | 15.86% | 16.83% |
 | stage 3 | 71 | 36.8 | 25.8 | 70.00% | 23.94% |
-| total | 76,878 | 46,003.9 | 2,059.5 | 4.48% | 8.07% |
+| total | 76,878 | 46,003.9 | 2,081.1 | 4.52% | 8.07% |
 
 | Control | Result |
 |---|---|
-| Validation gate | continue (0 red, 0 high, 5 medium, 7 low, 3 info) |
+| Validation gate | continue (0 red, 0 high, 4 medium, 4 low, 4 info) |
 | Critic loop | 2 reviews, 3 whitelisted analyses run |
-| Grounding check | pass: 518 numbers verified, 0 unverified |
-| LLM calls (dry-run) | 30 calls, ~156,446 input tokens |
+| Grounding check | pass: 531 numbers verified, 0 unverified |
+| LLM calls (dry-run) | 30 calls, ~160,770 input tokens |
 | ECL QC checks | 5 of 5 pass |
 <!-- END:results -->
 
 **Reading the results.**
-* *Discrimination.* The champion's OOT AUC of about 0.75 is typical for a 13-variable monotonic scorecard on this data. The challenger's about 0.79 is on a par with well-known public LightGBM kernels, which report about 0.79 as an out-of-fold CV figure; ours is on a holdout the model never saw.
+* *Discrimination.* The monotone LightGBM champion's OOT AUC of about 0.78 is close to well-known public LightGBM kernels (about 0.79, but as an out-of-fold CV figure; ours is on a holdout the model never saw, with every feature's effect constrained to credit logic). The 13-variable scorecard benchmark's about 0.75 is typical for a scorecard on this data. At the same 80% approval rate the champion approves about 9% fewer eventual defaulters.
 * *Calibration* is close at portfolio and grade level, and neither model needed recalibration.
 * *Stability.* PSI is near zero **by construction**, because the OOT is a random holdout. The stress ladder shows how large a mix shift the metric needs before it reacts.
-* *External scores.* Without EXT_SOURCE_1/2/3 the champion falls below the gate. See [the sensitivity analysis](docs/sensitivity_ext_source.md).
+* *Calibration trade-off.* LightGBM is slightly less tightly calibrated than the scorecard (OOT slope about 0.96 vs 1.00), and grade-level binomial tests flag under-prediction in two grades. These are medium findings for monitoring and possible grade-level recalibration.
+* *External scores.* They carry about a fifth of the champion's explanatory weight (SHAP) against about half of the scorecard's points range, but they're still the primary decline reason for most of the riskiest applicants. See [the sensitivity analysis](docs/sensitivity_ext_source.md).
 
 New to the code? [notebooks/credit_risk_explained.ipynb](notebooks/credit_risk_explained.ipynb) rebuilds every step in plain Python (data, split, features, WoE, scorecard, LightGBM, validation and one loan's ECL by hand), checking each number against the pipeline. It is committed without outputs; run it locally after `acr run`.
 
@@ -246,21 +263,18 @@ Generated by deterministic rules, with the thresholds stated in each finding. Th
 <!-- BEGIN:findings -->
 | ID | Severity | Area | Finding |
 |---|---|---|---|
-| V01 | medium | Performance | Champion test Gini close to gate |
-| V02 | medium | Benchmarking | Challenger materially outperforms champion |
-| V03 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
-| V04 | info | Stability | External population (application_test) score distribution stable |
-| V05 | low | Calibration | Amber calibration in some grades (OOT) |
-| V06 | low | Master scale | Sparsely populated grades |
-| V07 | low | Segments | Segment calibration off in contract_type = Revolving loans |
-| V08 | low | Segments | Segment calibration off in income_type = Commercial associate |
-| V09 | low | Segments | Segment calibration off in income_type = Pensioner |
-| V10 | low | Segments | Segment calibration off in income_type = State servant |
-| V11 | low | Segments | Segment calibration off in age_band = <30 |
-| V12 | medium | Conceptual soundness | Heavy reliance on undisclosed external scores |
-| V13 | info | Explainability | Monotonic constraints verified |
-| V14 | info | Explainability | Challenger explanations are stable |
-| V15 | medium | Conceptual soundness | Target is not the regulatory default definition |
+| V01 | info | Benchmarking | Champion outperforms the benchmark |
+| V02 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
+| V03 | info | Stability | External population (application_test) score distribution stable |
+| V04 | medium | Calibration | PD under-predicts default in some grades (OOT) |
+| V05 | low | Calibration | Hosmer-Lemeshow rejects on OOT |
+| V06 | medium | Discrimination | Rank-ordering breaks across PD deciles (OOT) |
+| V07 | low | Master scale | Sparsely populated grades |
+| V08 | low | Segments | Segment calibration off in income_type = State servant |
+| V09 | low | Conceptual soundness | Champion uses undisclosed external scores |
+| V10 | info | Explainability | Monotonic constraints verified |
+| V11 | info | Explainability | LightGBM explanations are stable |
+| V12 | medium | Conceptual soundness | Target is not the regulatory default definition |
 <!-- END:findings -->
 
 ## Regulatory mapping
@@ -270,6 +284,7 @@ Generated by deterministic rules, with the thresholds stated in each finding. Th
 | DQ checks and gate; feature dictionary | Development: data quality, relevance and documentation | Draft MRM guidance (June 2026, **draft**): data governance |
 | Train-only fitting, leakage tests, reproducibility | Sound development, implementation and testing | Draft MRM guidance: development standards |
 | Champion vs challenger with bootstrap CI | Outcomes analysis and benchmarking | Draft MRM guidance: validation |
+| Monotonic constraints, exact SHAP reason codes grouped by family, stability and constraint checks, scorecard fallback | Conceptual soundness; effective challenge | Draft MRM guidance: explainability as a tiering factor (para 19), explainability thresholds and compensating controls (para 54(1)), fairness (para 54(3)), human oversight and override (para 60) |
 | Read-only validator, findings with severity and remediation | Independent validation; effective challenge | ECL Directions model-risk requirements†; draft MRM guidance: independent validation |
 | Gates and halt | Limits on model use; conservatism | |
 | Ongoing Monitoring Plan (PSI/CSI, Gini, binomial tests; triggers and escalation) | Ongoing monitoring | ECL Directions model-risk requirements† |
@@ -322,9 +337,9 @@ Every LLM call records its input and output tokens and its cost at the rates in 
 
 * **Pseudo-OOT.** Home Credit has no application dates, so the 25% "out-of-time" holdout is a random stratified holdout. It cannot evidence temporal stability, and PSI/CSI are near zero by construction. A true out-of-time sample would be needed before any real use.
 * **Target definition.** TARGET flags payment difficulties on early instalments, not 90+ DPD within 12 months (the NPA definition). PDs are used as 12-month-equivalent proxies.
-* **External scores.** EXT_SOURCE_1/2/3 come from an undisclosed source, yet they carry about half the scorecard's points range. Without them the champion fails the gate ([sensitivity](docs/sensitivity_ext_source.md)).
+* **External scores.** EXT_SOURCE_1/2/3 come from an undisclosed source. They carry about a fifth of the champion's SHAP weight and are the primary decline reason for most of the riskiest applicants; performance falls materially without them ([sensitivity](docs/sensitivity_ext_source.md)).
 * **Illustrative ECL.** The book is the OOT holdout at a simulated reporting date with every loan at origination. Staging uses prior-loan delinquency and an application-only origination proxy, because no origination-date PD exists. Term and EIR are derived from rates implied by prior loans (segment-level, not loan-level). LGD is the regulatory backstop, not an estimate. Scenarios are illustrative. The figures demonstrate the method; they are not a provision.
-* **Model scope.** A deliberately lean scorecard (≤ 15 variables) on 114 curated features; no brute-force aggregation or ensembling.
+* **Model scope and explainability.** A depth-5, monotone LightGBM on 112 curated features, plus a lean scorecard benchmark (≤ 15 variables); no brute-force aggregation or ensembling. SHAP explains how the model attributes a prediction, not cause and effect.
 
 ## Project structure
 
@@ -339,7 +354,8 @@ src/acr/
   cli.py         acr run | tune | estimate-cost | graph | nodes
   nodes/         one module per graph node (legs/ holds the four leg agents)
   core/          deterministic logic: io, dq, split, legs/, binning, selection, scorecard,
-                 challenger, calibration, master_scale, metrics, validation, findings,
+                 challenger (LightGBM), calibration, master_scale, metrics, explain (SHAP),
+                 validation, findings,
                  ecl/ (rates, staging, lifetime, engine), facts, extras, docs, grounding
   llm/           dry-run, Gemini and Ollama providers; token cost
   tuning.py      offline train-only CV tuning

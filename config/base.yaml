@@ -58,6 +58,9 @@ features:
   csi_max: 0.10              # train vs test characteristic stability
 
 model:
+  # Which model holds the champion role (gates, ECL, documents, reason codes). The other is the
+  # benchmark challenger and documented fallback. Decision D33: monotone LightGBM.
+  champion: lightgbm         # lightgbm | scorecard
   scorecard:
     pdo: 20
     base_score: 600
@@ -92,3 +95,15 @@ explain:
   # Exact TreeSHAP (LightGBM pred_contrib) for the challenger on every OOT applicant.
   reason_codes: 4                 # top factors raising PD, reported per applicant
   stability_top_n: 10             # top-N features compared across halves and partitions
+  # Reason-code families: correlated features are grouped so a decline reason is stated once
+  # ("external credit scores are low"), not three times. First matching pattern wins.
+  families:
+    - {family: external_scores, label: "External credit scores", patterns: ["^APP_EXT_SOURCE"]}
+    - {family: hc_repayment, label: "Repayment history on previous Home Credit loans", patterns: ["^BEH_INS_", "^BEH_POS_"]}
+    - {family: card_usage, label: "Credit card usage", patterns: ["^BEH_CC_"]}
+    - {family: bureau, label: "Credit with other lenders (bureau)", patterns: ["^BUR_"]}
+    - {family: previous_apps, label: "Previous applications and refusals", patterns: ["^PRV_"]}
+    - {family: affordability, label: "Affordability (instalment and loan size against income)", patterns: ["ANNUITY_TO_INCOME", "CREDIT_TO_INCOME", "INCOME_PER_PERSON", "AMT_INCOME_TOTAL"]}
+    - {family: loan_terms, label: "Loan amount and terms", patterns: ["CREDIT_TO_GOODS", "CREDIT_TO_ANNUITY", "^APP_AMT_", "NAME_CONTRACT_TYPE"]}
+    - {family: employment, label: "Employment and occupation", patterns: ["EMPLOYED", "OCCUPATION", "ORGANIZATION", "INCOME_TYPE"]}
+    - {family: profile, label: "Applicant profile and contact details", patterns: [".*"]}

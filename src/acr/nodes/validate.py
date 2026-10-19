@@ -117,7 +117,7 @@ def validate(view):
         trn = scored[scored["partition"] == "train"]
         m["stability"]["external"] = {
             "n": int(len(ext)),
-            "score_psi": V.external_psi(trn["score"], ext["score"]),
+            "score_psi": V.external_psi(trn["pd_champion"], ext["pd_champion"]),
             "challenger_pd_psi": V.external_psi(trn["pd_challenger"], ext["pd_challenger"]),
             "mean_pd_champion": float(ext["pd_champion"].mean()),
             "mean_pd_champion_train": float(trn["pd_champion"].mean()),
@@ -129,7 +129,13 @@ def validate(view):
     if ex:
         m["explain"] = {k: ex[k] for k in ("additivity_max_error", "external_score_share", "stability",
                                            "monotone", "gender_pd_to_dr", "applicants_explained")}  # fmt: skip
-    m["external_score_share"] = V.points_range_share(points, [f for f in EXTERNAL if f in selected])
+    m["roles"] = model["roles"]
+    m["external_score_share_scorecard"] = V.points_range_share(
+        points, [f for f in EXTERNAL if f in selected]
+    )
+    # Reliance of the CHAMPION on external scores: SHAP share for LightGBM, points range for the scorecard.
+    m["external_score_share"] = (ex["external_score_share"] if model["roles"]["champion"] == "lightgbm" and ex
+                                 else m["external_score_share_scorecard"])  # fmt: skip
 
     out = artefact_dir(view, "validation")
     grades.to_csv(out / "grade_table_oot.csv", index=False)

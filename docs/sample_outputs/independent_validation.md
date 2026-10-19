@@ -1,64 +1,64 @@
 # Independent Validation Report — PD scorecard
 
-> Run `20261019T052034Z_full_975e6130602a` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
+> Run `20261019T055332Z_full_bd0bb86ae168` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
 
 ## 1. Scope and independence
 
-This report covers the champion scorecard and the challenger. The validator read saved outputs only, verified the checksums of every model artefact before and after its work, and imported no fitting code. Gate outcome: continue. Findings: 0 red, 0 high, 5 medium and 7 low.
+This report covers the champion scorecard and the challenger. The validator read saved outputs only, verified the checksums of every model artefact before and after its work, and imported no fitting code. Gate outcome: continue. Findings: 0 red, 0 high, 4 medium and 4 low.
 
 ## 2. Conceptual soundness
 
-The WoE scorecard is a well-understood, interpretable method, and all learned steps were fitted on train only. Protected characteristics are excluded from the model. Two conceptual concerns remain: the target is not the regulatory default definition, and external scores of unknown construction account for 52% of the points range.
+The champion is a monotonically constrained LightGBM model on 112 features (745 trees). Its complexity is mitigated by monotonic constraints, which keep every feature's effect in line with credit logic, and by exact per-applicant SHAP explanations; the scorecard is retained as an interpretable benchmark and fallback. All learned steps were fitted on train only, and protected characteristics are excluded. Two conceptual concerns remain: the target is not the regulatory default definition, and external scores of unknown construction carry 22% of the champion's explanatory weight.
 
 ## 3. Outcomes analysis
 
-On OOT the champion's Gini is 0.5008 (AUC 0.7504) and KS 0.3769. Mean PD 8.04% matches the observed default rate 8.07%. The Hosmer-Lemeshow p-value is 0.3162. Grade-level binomial tests are shown below; default rates rise across grades with 0 rank-order break(s).
+On OOT the champion's Gini is 0.5602 (AUC 0.7801) and KS 0.4263. Mean PD 8.08% matches the observed default rate 8.07%. The Hosmer-Lemeshow p-value is 0.0059. Grade-level binomial tests are shown below; default rates rise across grades with 0 rank-order break(s).
 
 | Model | Partition | Gini | AUC | KS | Mean PD | Default rate |
 |---|---|---|---|---|---|---|
-| champion | train | 0.5041 | 0.7521 | 0.3782 | 8.07% | 8.07% |
-| champion | test | 0.4896 | 0.7448 | 0.3676 | 8.06% | 8.07% |
-| champion | oot | 0.5008 | 0.7504 | 0.3769 | 8.04% | 8.07% |
-| challenger | train | 0.6120 | 0.8060 | 0.4623 | 8.07% | 8.07% |
-| challenger | test | 0.5520 | 0.7760 | 0.4115 | 8.07% | 8.07% |
-| challenger | oot | 0.5602 | 0.7801 | 0.4263 | 8.08% | 8.07% |
+| champion (lightgbm) | train | 0.6120 | 0.8060 | 0.4623 | 8.07% | 8.07% |
+| champion (lightgbm) | test | 0.5520 | 0.7760 | 0.4115 | 8.07% | 8.07% |
+| champion (lightgbm) | oot | 0.5602 | 0.7801 | 0.4263 | 8.08% | 8.07% |
+| challenger (scorecard) | train | 0.5041 | 0.7521 | 0.3782 | 8.07% | 8.07% |
+| challenger (scorecard) | test | 0.4896 | 0.7448 | 0.3676 | 8.06% | 8.07% |
+| challenger (scorecard) | oot | 0.5008 | 0.7504 | 0.3769 | 8.04% | 8.07% |
 
 | Grade | Accounts | Share | Mean PD | Default rate | Binomial p (under) | Light |
 |---|---|---|---|---|---|---|
-| 1 | 35 | 0.05% | 0.46% | 2.86% | 0.1488 | green |
-| 2 | 1,391 | 1.81% | 0.83% | 0.86% | 0.4793 | green |
-| 3 | 7,908 | 10.29% | 1.54% | 1.67% | 0.1867 | green |
-| 4 | 14,447 | 18.79% | 2.74% | 2.76% | 0.4323 | green |
-| 5 | 11,531 | 15.00% | 4.22% | 3.94% | 0.9370 | green |
-| 6 | 13,277 | 17.27% | 6.16% | 6.03% | 0.7424 | green |
-| 7 | 8,371 | 10.89% | 8.66% | 8.53% | 0.6647 | green |
-| 8 | 9,464 | 12.31% | 12.19% | 12.84% | 0.0295 | amber |
-| 9 | 7,163 | 9.32% | 19.02% | 19.41% | 0.2048 | green |
-| 10 | 3,291 | 4.28% | 33.75% | 33.09% | 0.7926 | green |
+| 1 | 459 | 0.60% | 0.40% | 0.22% | 0.8382 | green |
+| 2 | 3,497 | 4.55% | 0.79% | 0.69% | 0.7765 | green |
+| 3 | 11,517 | 14.98% | 1.51% | 1.82% | 0.0043 | red |
+| 4 | 14,813 | 19.27% | 2.71% | 2.57% | 0.8578 | green |
+| 5 | 10,278 | 13.37% | 4.20% | 4.19% | 0.5275 | green |
+| 6 | 10,702 | 13.92% | 6.14% | 6.23% | 0.3483 | green |
+| 7 | 6,516 | 8.48% | 8.65% | 9.01% | 0.1562 | green |
+| 8 | 7,693 | 10.01% | 12.20% | 13.13% | 0.0074 | red |
+| 9 | 6,701 | 8.72% | 19.17% | 19.33% | 0.3761 | green |
+| 10 | 4,702 | 6.12% | 36.80% | 34.03% | 1.0000 | green |
 
 ## 4. Stability
 
-Score PSI is 0.0001 on OOT and the largest feature CSI is 0.0850, as expected for a random holdout. A stress ladder that up-weights applicants under 30 gives PSI 0.0206, 0.1319 and 0.3391, so score PSI only reacts to large shifts. The unlabelled application_test population (48,744 applicants) has score PSI 0.0018. Temporal stability remains untested.
+Score PSI is 0.0002 on OOT and the largest feature CSI is 0.0850, as expected for a random holdout. A stress ladder that up-weights applicants under 30 gives PSI 0.0152, 0.0939 and 0.2334, so score PSI only reacts to large shifts. The unlabelled application_test population (48,744 applicants) has score PSI 0.0072. Temporal stability remains untested.
 
 | Measure | Value |
 |---|---|
-| Score PSI, train vs test | 0.0001 |
-| Score PSI, train vs OOT | 0.0001 |
+| Score PSI, train vs test | 0.0004 |
+| Score PSI, train vs OOT | 0.0002 |
 | Largest feature CSI | 0.0850 |
-| Stress PSI, under-30s x3 | 0.0206 |
-| Stress PSI, under-30s x10 | 0.1319 |
-| Stress PSI, under-30s x50 | 0.3391 |
-| Score PSI, application_test vs train | 0.0018 |
+| Stress PSI, under-30s x3 | 0.0152 |
+| Stress PSI, under-30s x10 | 0.0939 |
+| Stress PSI, under-30s x50 | 0.2334 |
+| Score PSI, application_test vs train | 0.0072 |
 
 ## 5. Benchmarking against the challenger
 
-The challenger outperforms the champion on OOT by 0.0594 Gini (AUC 0.0297), with a 95% bootstrap interval of 0.0524 to 0.0649. Its train Gini of 0.6120 against OOT 0.5602 shows it overfits more than the champion. The scorecard is retained for interpretability; the gap is recorded as a finding.
+The champion outperforms the benchmark scorecard on OOT by 0.0594 Gini (AUC 0.0297); the 95% bootstrap interval for challenger minus champion is -0.0649 to -0.0524, so the gain is significant. The champion's train Gini of 0.6120 against OOT 0.5602 shows modest overfitting within tolerance. The scorecard remains the documented fallback.
 
 | Measure | Value |
 |---|---|
-| OOT Gini difference (challenger - champion) | 0.0594 |
-| AUC difference | 0.0297 |
-| 95% bootstrap interval | 0.0524 to 0.0649 |
+| OOT Gini difference (challenger - champion) | -0.0594 |
+| AUC difference | -0.0297 |
+| 95% bootstrap interval | -0.0649 to -0.0524 |
 
 ## 6. Findings and remediation
 
@@ -66,51 +66,42 @@ Findings are generated by deterministic rules with thresholds stated in each fin
 
 | ID | Severity | Area | Finding |
 |---|---|---|---|
-| V01 | medium | Performance | Champion test Gini close to gate |
-| V02 | medium | Benchmarking | Challenger materially outperforms champion |
-| V03 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
-| V04 | info | Stability | External population (application_test) score distribution stable |
-| V05 | low | Calibration | Amber calibration in some grades (OOT) |
-| V06 | low | Master scale | Sparsely populated grades |
-| V07 | low | Segments | Segment calibration off in contract_type = Revolving loans |
-| V08 | low | Segments | Segment calibration off in income_type = Commercial associate |
-| V09 | low | Segments | Segment calibration off in income_type = Pensioner |
-| V10 | low | Segments | Segment calibration off in income_type = State servant |
-| V11 | low | Segments | Segment calibration off in age_band = <30 |
-| V12 | medium | Conceptual soundness | Heavy reliance on undisclosed external scores |
-| V13 | info | Explainability | Monotonic constraints verified |
-| V14 | info | Explainability | Challenger explanations are stable |
-| V15 | medium | Conceptual soundness | Target is not the regulatory default definition |
+| V01 | info | Benchmarking | Champion outperforms the benchmark |
+| V02 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
+| V03 | info | Stability | External population (application_test) score distribution stable |
+| V04 | medium | Calibration | PD under-predicts default in some grades (OOT) |
+| V05 | low | Calibration | Hosmer-Lemeshow rejects on OOT |
+| V06 | medium | Discrimination | Rank-ordering breaks across PD deciles (OOT) |
+| V07 | low | Master scale | Sparsely populated grades |
+| V08 | low | Segments | Segment calibration off in income_type = State servant |
+| V09 | low | Conceptual soundness | Champion uses undisclosed external scores |
+| V10 | info | Explainability | Monotonic constraints verified |
+| V11 | info | Explainability | LightGBM explanations are stable |
+| V12 | medium | Conceptual soundness | Target is not the regulatory default definition |
 
-**V01 (medium) Champion test Gini close to gate.** test Gini 0.4896 (AUC 0.7448) is within 0.05 of the 0.45 minimum. *Remediation:* Monitor closely; set an early-warning trigger in the monitoring plan.
+**V01 (info) Champion outperforms the benchmark.** Champion (monotone LightGBM) OOT Gini 0.5602 (AUC 0.7801) vs challenger (WoE scorecard) 0.5008 (AUC 0.7504); challenger minus champion -0.0594 (95% bootstrap CI -0.0649 to -0.0524; AUC difference -0.0297). The champion's added complexity is supported by a significant gain in discrimination over the benchmark. *Remediation:* Keep the benchmark as a documented fallback and monitor the gap.
 
-**V02 (medium) Challenger materially outperforms champion.** Challenger OOT Gini 0.5602 (AUC 0.7801) vs champion 0.5008 (AUC 0.7504): Gini difference 0.0594 (95% bootstrap CI 0.0524 to 0.0649; AUC difference 0.0297) exceeds 0.05. *Remediation:* Document why the interpretable scorecard is preferred, or investigate the non-linear effects the challenger captures (interactions, finer bins).
+**V02 (medium) Stability testing is not temporal (pseudo-OOT).** Holdouts are random stratified draws with no application dates, so score PSI is near zero by construction (max 0.0004). Stress ladder, up-weighting applicants under 30 in the OOT book: 3x: 0.0152 (green), 10x: 0.0939 (green), 50x: 0.2334 (amber). Score PSI only flags large mix shifts, so it is a coarse drift detector. Real temporal stability is untested. *Remediation:* Re-validate on a true out-of-time sample; monitor per-feature CSI alongside score PSI.
 
-**V03 (medium) Stability testing is not temporal (pseudo-OOT).** Holdouts are random stratified draws with no application dates, so score PSI is near zero by construction (max 0.0001). Stress ladder, up-weighting applicants under 30 in the OOT book: 3x: 0.0206 (green), 10x: 0.1319 (amber), 50x: 0.3390 (red). Score PSI only flags large mix shifts, so it is a coarse drift detector. Real temporal stability is untested. *Remediation:* Re-validate on a true out-of-time sample; monitor per-feature CSI alongside score PSI.
+**V03 (info) External population (application_test) score distribution stable.** Score PSI of 48,744 unlabelled application_test applicants against train: 0.0072 (amber 0.10, red 0.25); challenger PD PSI 0.0018. Mean champion PD 0.0727 vs 0.0807 on train. No outcomes exist for this population, so only distributional stability can be checked; it was drawn from the same period, so it is not a temporal test either.
 
-**V04 (info) External population (application_test) score distribution stable.** Score PSI of 48,744 unlabelled application_test applicants against train: 0.0018 (amber 0.10, red 0.25); challenger PD PSI 0.0072. Mean champion PD 0.0788 vs 0.0807 on train. No outcomes exist for this population, so only distributional stability can be checked; it was drawn from the same period, so it is not a temporal test either.
+**V04 (medium) PD under-predicts default in some grades (OOT).** One-sided binomial test rejects at 0.01 in 2 grade(s): grade 3 (DR 0.0182 vs PD 0.0151), grade 8 (DR 0.1313 vs PD 0.1220). The test assumes independent defaults. *Remediation:* Consider grade-level recalibration or a margin of conservatism.
 
-**V05 (low) Amber calibration in some grades (OOT).** 1 grade(s) at 0.05 significance: 8. *Remediation:* Monitor.
+**V05 (low) Hosmer-Lemeshow rejects on OOT.** HL statistic 21.52, p-value 0.0059. With 76,878 observations HL is highly powered; decile ECE is 0.0035 and the calibration slope 0.957. *Remediation:* Rely on ECE, slope and grade-level tests for materiality.
 
-**V06 (low) Sparsely populated grades.** Grade(s) 1 hold under 1% of the OOT book (35 accounts). *Remediation:* Consider merging grades or recalibrating boundaries.
+**V06 (medium) Rank-ordering breaks across PD deciles (OOT).** 1 reversal(s) across deciles. *Remediation:* Investigate.
 
-**V07 (low) Segment calibration off in contract_type = Revolving loans.** Mean PD / default rate 1.238 (tolerance ±10%, n = 7,239). *Remediation:* Review segment calibration.
+**V07 (low) Sparsely populated grades.** Grade(s) 1 hold under 1% of the OOT book (459 accounts). *Remediation:* Consider merging grades or recalibrating boundaries.
 
-**V08 (low) Segment calibration off in income_type = Commercial associate.** Mean PD / default rate 1.139 (tolerance ±10%, n = 17,907). *Remediation:* Review segment calibration.
+**V08 (low) Segment calibration off in income_type = State servant.** Mean PD / default rate 1.147 (tolerance ±10%, n = 5,243). *Remediation:* Review segment calibration.
 
-**V09 (low) Segment calibration off in income_type = Pensioner.** Mean PD / default rate 0.860 (tolerance ±10%, n = 13,975). *Remediation:* Review segment calibration.
+**V09 (low) Champion uses undisclosed external scores.** EXT_SOURCE features carry 22% of mean absolute SHAP in the champion (threshold 50%); their provider and construction are not disclosed, so they are third-party model inputs. *Remediation:* Obtain documentation of the external scores and monitor their availability. Without them performance falls materially (docs/sensitivity_ext_source.md).
 
-**V10 (low) Segment calibration off in income_type = State servant.** Mean PD / default rate 1.219 (tolerance ±10%, n = 5,243). *Remediation:* Review segment calibration.
+**V10 (info) Monotonic constraints verified.** Sweeping each of 91 constrained features across its range for 500 OOT applicants moved PD only in the allowed direction.
 
-**V11 (low) Segment calibration off in age_band = <30.** Mean PD / default rate 1.110 (tolerance ±10%, n = 11,232). *Remediation:* Review segment calibration.
+**V11 (info) LightGBM explanations are stable.** Top-10 SHAP drivers overlap at least 100% across OOT halves, test vs OOT and train vs OOT; rank correlation at least 1.000.
 
-**V12 (medium) Heavy reliance on undisclosed external scores.** EXT_SOURCE features contribute 52% of the scorecard's points range (threshold 50%); their provider and construction are not disclosed. *Remediation:* Obtain documentation of the external scores. Without them OOT Gini falls from about 0.50 to 0.40 and the gate fails (docs/sensitivity_ext_source.md).
-
-**V13 (info) Monotonic constraints verified.** Sweeping each of 91 constrained features across its range for 500 OOT applicants moved PD only in the allowed direction.
-
-**V14 (info) Challenger explanations are stable.** Top-10 SHAP drivers overlap at least 100% across OOT halves, test vs OOT and train vs OOT; rank correlation at least 1.000.
-
-**V15 (medium) Target is not the regulatory default definition.** TARGET marks payment difficulties on early instalments, not 90+ DPD within 12 months (the NPA definition). PDs are therefore 12-month-equivalent proxies for ECL use. *Remediation:* Rebuild the target on a 90+ DPD, 12-month window when performance data allow.
+**V12 (medium) Target is not the regulatory default definition.** TARGET marks payment difficulties on early instalments, not 90+ DPD within 12 months (the NPA definition). PDs are therefore 12-month-equivalent proxies for ECL use. *Remediation:* Rebuild the target on a 90+ DPD, 12-month window when performance data allow.
 
 ## 7. Challenge by the critic agent
 
@@ -118,10 +109,10 @@ An LLM critic agent reviewed the validation and ECL summaries as a skeptical sec
 
 | Iteration | ID | Severity | Area | Challenge | Detail |
 |---|---|---|---|---|---|
-| 0 | C1 | medium | Benchmarking | Interpretability premium is large | The challenger's OOT Gini is 0.5602 against 0.5008 for the champion, a difference of 0.0594 (95% CI 0.0524 to 0.0649). The development document must justify accepting this loss of discrimination for interpretability. |
-| 0 | C2 | medium | Conceptual soundness | Dependence on undisclosed external scores | External scores carry 51.6% of the points range. Their construction is unknown, so a change at the provider would move PDs without any change in this model. |
-| 0 | C3 | medium | ECL | ECL is driven by a regulatory LGD backstop | Base LGD is 70% (para 97 backstop), giving total coverage of 4.48%. This is an assumption, not an estimate; its range should be shown. |
-| 0 | C4 | medium | Stability | No temporal evidence of stability | Score PSI is 0.0001 because the holdout is random. Discrimination by age is the most plausible drift channel and should be checked directly. |
+| 0 | C1 | medium | Governance | A complex champion must earn its higher model tier | The champion leads the scorecard by 0.0594 OOT Gini (95% CI for challenger minus champion -0.0649 to -0.0524). Its explanations rest on SHAP and monotonic constraints (0 violations found). The reason codes must be shown to be understandable to customers, and the fallback to the scorecard must be tested, not just documented. |
+| 0 | C2 | low | Conceptual soundness | Dependence on undisclosed external scores | External scores carry 22.0% of the champion's explanatory weight. Their construction is unknown, so a change at the provider would move PDs without any change in this model. |
+| 0 | C3 | medium | ECL | ECL is driven by a regulatory LGD backstop | Base LGD is 70% (para 97 backstop), giving total coverage of 4.52%. This is an assumption, not an estimate; its range should be shown. |
+| 0 | C4 | medium | Stability | No temporal evidence of stability | Score PSI is 0.0002 because the holdout is random. Discrimination by age is the most plausible drift channel and should be checked directly. |
 
 | Iteration | Analysis requested | Rationale | Outcome |
 |---|---|---|---|
@@ -131,8 +122,8 @@ An LLM critic agent reviewed the validation and ECL summaries as a skeptical sec
 
 *Review 0 conclusion:* 4 challenges raised; 3 analyses requested.
 
-*Review 1 conclusion:* LGD sensitivity: final coverage ranges from 2.66% to 4.79% across the requested LGDs, so the backstop choice is material. Segment cut by age_band: the weakest band is <25 with Gini 0.3992 (AUC 0.6996) and PD/DR 1.251. Grade concentration: HHI 0.1361; the largest grade is 4 with 18.8% of accounts.
+*Review 1 conclusion:* LGD sensitivity: final coverage ranges from 2.73% to 4.83% across the requested LGDs, so the backstop choice is material. Segment cut by age_band: the weakest band is <25 with Gini 0.4566 (AUC 0.7283) and PD/DR 1.217. Grade concentration: HHI 0.1275; the largest grade is 4 with 19.3% of accounts.
 
 ## 8. Conclusion
 
-The champion passes the performance gates with OOT Gini 0.5008 against a minimum of 0.45, and is well calibrated. It is fit for its demonstration purpose, subject to the medium findings, in particular re-validation on a true out-of-time sample and documentation of the external scores.
+The champion passes the performance gates with OOT Gini 0.5602 against a minimum of 0.45, is well calibrated, satisfies its monotonic constraints and has stable explanations. It is fit for its demonstration purpose, subject to the medium findings, in particular re-validation on a true out-of-time sample and documentation of the external scores.

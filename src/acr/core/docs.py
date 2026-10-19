@@ -88,13 +88,13 @@ def performance_table(f, ctx):
     for m in ("champion", "challenger"):
         for p in ("train", "test", "oot"):
             x = f[m]["performance"][p]
-            rows.append([m, p, f"{x['gini']:.4f}", f"{x['auc']:.4f}", f"{x['ks']:.4f}",
+            rows.append([f"{m} ({f[m]['model']})", p, f"{x['gini']:.4f}", f"{x['auc']:.4f}", f"{x['ks']:.4f}",
                          _pct(x["mean_pd"]), _pct(x["default_rate"])])  # fmt: skip
     return _md(["Model", "Partition", "Gini", "AUC", "KS", "Mean PD", "Default rate"], rows)
 
 
 def calibration_table(f, ctx):
-    rows = [[m, f"{c['ece']:.4f}", f"{c['slope']:.3f}", f"{c['hl_p_value']:.4f}", f"{c['pd_to_dr']:.3f}"]
+    rows = [[f"{m} ({f[m]['model']})", f"{c['ece']:.4f}", f"{c['slope']:.3f}", f"{c['hl_p_value']:.4f}", f"{c['pd_to_dr']:.3f}"]
             for m in ("champion", "challenger") for c in [f[m]["calibration_oot"]]]  # fmt: skip
     return _md(["Model (OOT)", "Decile ECE", "Slope", "HL p-value", "Mean PD / DR"], rows)
 
@@ -230,6 +230,17 @@ def shap_table(f, ctx):
     return t1 + "\n\n" + t2
 
 
+def reason_family_table(f, ctx):
+    e = f["explain"]
+    t1 = _md(
+        ["Reason family", "Share of mean abs SHAP"],
+        [[k, _pct(v, 1)] for k, v in e["family_shares"].items()],
+    )
+    t2 = _md(["Primary decline reason (riskiest 10% of OOT)", "Share of applicants"],
+             [[k, _pct(v, 1)] for k, v in e["primary_reason_top_decile"].items()])  # fmt: skip
+    return t1 + "\n\n" + t2
+
+
 def explain_checks_table(f, ctx):
     e = f["explain"]
     st, mono = e["stability"], e["monotone"]
@@ -240,7 +251,7 @@ def explain_checks_table(f, ctx):
     rows += [[f"Top-{x['top_n']} driver overlap / rank correlation, {k.replace('_', ' ')}",
               f"{x['top_overlap']:.0%} / {x['spearman']:.3f}"] for k, x in st.items()]  # fmt: skip
     rows += [
-        [f"Challenger mean PD / default rate, gender {g}", f"{r:.3f}"]
+        [f"LightGBM mean PD / default rate, gender {g}", f"{r:.3f}"]
         for g, r in e["gender_pd_to_dr"].items()
     ]
     return _md(["Check", "Result"], rows)
@@ -250,4 +261,4 @@ TABLES = {fn.__name__: fn for fn in (
     data_table, split_table, selection_funnel_table, selected_features_table, performance_table,
     calibration_table, grade_table, stability_table, comparison_table, findings_table,
     findings_detail, critic_table, monitoring_table, staging_table, lifetime_table, lgd_table,
-    scenario_table, ecl_stage_table, ecl_assumptions_table, shap_table, explain_checks_table)}  # fmt: skip
+    scenario_table, ecl_stage_table, ecl_assumptions_table, shap_table, explain_checks_table, reason_family_table)}  # fmt: skip

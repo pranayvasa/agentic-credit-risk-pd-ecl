@@ -91,8 +91,8 @@ def test_constraint_violation_is_a_high_finding():
     assert any(x.severity == "high" and x.title == "Monotonic constraints violated" for x in f)
 
 
-def test_degenerate_challenger_is_flagged_not_called_stable(init_state):
+def test_degenerate_lightgbm_is_flagged_not_called_stable(init_state):
     final = build_graph().invoke(init_state(), {"recursion_limit": 60})  # tiny sample: no splits
     titles = {f["title"] for f in final["validation"]["findings"]}
-    assert "Challenger explanations are stable" not in titles
-    assert "Challenger explanations could not be assessed" in titles
+    assert "LightGBM explanations are stable" not in titles
+    assert "LightGBM explanations could not be assessed" in titles

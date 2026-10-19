@@ -74,16 +74,25 @@ def results_block(s: dict) -> str:
         for p in ("train", "test", "oot"):
             x = v[m]["performance"][p]
             out.append(
-                f"| {m} | {p} | {x['gini']:.4f} | {x['auc']:.4f} | {x['ks']:.4f} | {_pct(x['mean_pd'])} | {_pct(x['default_rate'])} |"
+                f"| {m} ({s['model']['roles'][m]}) | {p} | {x['gini']:.4f} | {x['auc']:.4f} | {x['ks']:.4f} | {_pct(x['mean_pd'])} | {_pct(x['default_rate'])} |"
             )
     c, st = v["comparison"], v["stability"]
     cal = v["champion"]["calibration"]["oot"]
     out += ["", "| Measure | Value |", "|---|---|",
             f"| Champion OOT decile ECE / calibration slope | {cal['ece']:.4f} / {cal['slope']:.3f} |",
-            f"| Challenger − champion OOT Gini (95% bootstrap CI) | {c['diff']:.4f} ({c['ci_low']:.4f} to {c['ci_high']:.4f}) |",
+            f"| Champion lead over benchmark, OOT Gini (95% bootstrap CI) | {-c['diff']:.4f} ({-c['ci_high']:.4f} to {-c['ci_low']:.4f}) |",
             f"| Score PSI train→test / train→OOT | {st['score_psi']['train_vs_test']:.4f} / {st['score_psi']['train_vs_oot']:.4f} |",
             f"| Largest selected-feature CSI | {st['csi_max']:.4f} |",
             f"| Stress PSI ladder (under-30s ×3 / ×10 / ×50) | {' / '.join(f'{x:.4f}' for x in st['stress_psi'].values())} |"]  # fmt: skip
+    ex = s.get("explain")
+    if ex:
+        out.append(
+            f"| LightGBM monotonic constraints: features tested / violations | "
+            f"{ex['monotone']['features_tested']} / {ex['monotone']['violating_rows']} |"
+        )
+        out.append(
+            f"| SHAP top-10 driver overlap, test vs OOT | {ex['stability']['test_vs_oot']['top_overlap']:.0%} |"
+        )
     if st.get("external"):
         out.append(
             f"| Score PSI, unlabelled application_test ({st['external']['n']:,}) vs train | {st['external']['score_psi']:.4f} |"

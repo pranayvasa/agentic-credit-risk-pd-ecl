@@ -115,12 +115,21 @@ def test_grounding_flags_a_number_injected_into_a_document(run, tmp_path):
     copied = {}
     for name, p in docs.items():
         copied[name] = str(shutil.copy(p, run_dir / "documents" / Path(p).name))
+    from acr.core.facts import build_facts, numeric_leaves
+
+    # Pick fake numbers that provably match nothing in this run's reference set.
+    ref = [x for _, x in numeric_leaves(build_facts(run))]
+    ref += [x for _, x in numeric_leaves(run["extra_analyses"])] + [
+        x for _, x in numeric_leaves(run["config"])
+    ]
+    plain = next(t for t in ("0.9137", "0.9317", "0.9713") if check(t, ref).counts["unverified"])
+    pct = next(t for t in ("41.37%", "43.17%", "47.13%") if check(t, ref).counts["unverified"])
     with open(copied["model_development"], "a") as f:
-        f.write("\nThe champion's OOT Gini is 0.9137 and coverage is 12.84%.\n")
+        f.write(f"\nThe champion's OOT Gini is {plain} and coverage is {pct}.\n")
     state = {**run, "run_dir": str(run_dir), "documents": {**run["documents"], **copied}}
     out = grounding_check(state)["grounding"]
     assert out["status"] == "flagged"
-    assert {u["number"] for u in out["unverified"]} == {"0.9137", "12.84%"}
+    assert {u["number"] for u in out["unverified"]} == {plain, pct}
 
 
 def test_critic_loop_ran_whitelisted_analyses(run):

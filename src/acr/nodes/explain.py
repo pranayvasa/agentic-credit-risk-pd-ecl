@@ -1,4 +1,4 @@
-"""Explain node: SHAP explanations for the LightGBM challenger (first-line explainability).
+"""Explain node: SHAP explanations and reason codes for the LightGBM model (first-line explainability).
 
 Reads the saved booster and features; never refits. Produces global and per-leg importance,
 per-applicant reason codes for the whole OOT book, stability of the top drivers, a direct
@@ -24,7 +24,7 @@ EXTERNAL = {"APP_EXT_SOURCE_1", "APP_EXT_SOURCE_2", "APP_EXT_SOURCE_3", "APP_EXT
 
 @node(
     "explain",
-    role="Exact TreeSHAP explanations of the LightGBM challenger: global and per-leg "
+    role="Exact TreeSHAP explanations of the LightGBM model (champion under D33): global and per-leg "
     "importance, top-4 reason codes for every OOT applicant, stability of the top drivers, "
     "and a direct test that the monotonic constraints hold. Reads the saved model; never refits.",
     reads=["config", "split", "selection", "model"],
@@ -34,7 +34,7 @@ def explain(view):
     c = cfg(view)
     k, top_n = c.base.explain.reason_codes, c.base.explain.stability_top_n
     paths = view["model"]["paths"]
-    booster = lgb.Booster(model_file=paths["challenger"])
+    booster = lgb.Booster(model_file=paths["lightgbm"])
     names = booster.feature_name()
     meta = json.loads(Path(view["selection"]["paths"]["meta"]).read_text())
     cat = [f for f in names if f in meta["categorical"]]
@@ -61,6 +61,16 @@ def explain(view):
         "train_vs_oot": E.stability(E.global_importance(sh_train), imp, top_n),
     }  # fmt: skip
     reasons = E.reason_codes(sh_oot, feats.loc[ids["oot"], names], k)
+    fams = [f.model_dump() for f in c.base.explain.families]
+    fmap = E.family_map(names, fams)
+    labels = {f["family"]: f["label"] for f in fams}
+    fam_reasons = E.family_reason_codes(sh_oot, fmap, labels, k)
+    fam_imp = E.family_shap(sh_oot, fmap).abs().mean()
+    fam_share = (fam_imp / fam_imp.sum()).sort_values(ascending=False) if fam_imp.sum() else fam_imp
+    scored_oot = pd.read_parquet(paths["scored"]).loc[ids["oot"]]
+    high = scored_oot.index[scored_oot["pd_lightgbm"] >= scored_oot["pd_lightgbm"].quantile(0.9)]
+    primary = fam_reasons[(fam_reasons["rank"] == 1) & fam_reasons["SK_ID_CURR"].isin(high)]
+    primary_share = primary["reason"].value_counts(normalize=True)
 
     mono = (
         json.loads(Path(paths["monotone"]).read_text())
@@ -71,21 +81,25 @@ def explain(view):
     viol = (E.monotonicity_violations(booster, sweep_rows, mono.get("signs", {}))
             if mono.get("enabled") else pd.DataFrame(columns=["feature", "violating_rows"]))  # fmt: skip
 
-    scored = pd.read_parquet(paths["scored"]).loc[ids["oot"]]
+    scored = scored_oot
     gender = feats.loc[ids["oot"], "APP_CODE_GENDER"].astype("string")
-    by_gender = (scored.groupby(gender)[["pd_challenger", "TARGET"]].mean()
-                 .query("TARGET > 0").assign(pd_to_dr=lambda d: d["pd_challenger"] / d["TARGET"]))  # fmt: skip
+    by_gender = (scored.groupby(gender)[["pd_lightgbm", "TARGET"]].mean()
+                 .query("TARGET > 0").assign(pd_to_dr=lambda d: d["pd_lightgbm"] / d["TARGET"]))  # fmt: skip
     by_gender = by_gender[scored.groupby(gender).size().reindex(by_gender.index) >= 1000]
 
     out = artefact_dir(view, "explain")
     files = {"shap_oot": out / "shap_oot.parquet", "importance": out / "shap_importance.csv",
              "legs": out / "shap_by_leg.csv", "reason_codes": out / "reason_codes_oot.parquet",
-             "monotonicity": out / "monotonicity_check.csv"}  # fmt: skip
+             "monotonicity": out / "monotonicity_check.csv",
+             "reason_families": out / "reason_families_oot.parquet",
+             "family_map": out / "reason_family_map.json"}  # fmt: skip
     sh_oot.astype("float32").to_parquet(files["shap_oot"])
     imp.to_csv(files["importance"])
     legs.rename("share").to_csv(files["legs"])
     reasons.to_parquet(files["reason_codes"], index=False)
     viol.to_csv(files["monotonicity"], index=False)
+    fam_reasons.to_parquet(files["reason_families"], index=False)
+    files["family_map"].write_text(json.dumps(fmap, indent=2))
 
     top = imp.head(10)
     return {
@@ -117,6 +131,9 @@ def explain(view):
                 "rows_swept": int(len(sweep_rows)),
             },  # fmt: skip
             "reason_codes_per_applicant": k,
+            "family_shares": {labels[f]: float(v) for f, v in fam_share.items()},
+            "primary_reason_top_decile": {str(r): float(v) for r, v in primary_share.items()},
+            "families": len(fams),
             "gender_pd_to_dr": {str(g): float(v) for g, v in by_gender["pd_to_dr"].items()},
             "paths": {k_: str(v) for k_, v in files.items()},
         }

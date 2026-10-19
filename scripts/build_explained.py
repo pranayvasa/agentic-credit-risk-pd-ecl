@@ -69,9 +69,9 @@ checks compare against that run's saved results in `outputs/`.
 | 4 | Feature engineering, by example |
 | 5 | Weight of evidence (WoE) and information value (IV) |
 | 6 | Feature selection |
-| 7 | The scorecard (logistic regression) and scoring one applicant |
-| 8 | The challenger (LightGBM) |
-| 9 | Validation: is the model any good? |
+| 7 | The benchmark scorecard and scoring one applicant by hand |
+| 8 | The champion: monotone LightGBM, SHAP and reason codes |
+| 9 | Validation: is the champion any good? |
 | 10 | Expected credit loss (ECL) for one loan, then the whole book |
 | 11 | The "agents" around all of this |
 | 12 | Glossary |
@@ -392,7 +392,7 @@ across the bins. Rule of thumb: below 0.02 is useless, 0.1 to 0.3 is medium, abo
 suspiciously strong.
 
 We use the `optbinning` library on **train only**, with bins that move in one direction
-(*monotonic*), so the scorecard makes intuitive sense.
+(*monotonic*), so the result makes intuitive sense. The same binning later tells LightGBM which direction each feature may move PD.
 """)
 code("""
 from optbinning import OptimalBinning
@@ -460,16 +460,24 @@ pd.DataFrame({"IV": iv.loc[selected].round(4),
 
 # =========================================================================================
 md("""
-## 7. The scorecard: logistic regression on WoE
+## 7. The benchmark: a scorecard (logistic regression on WoE)
+
+The project has two models. The **champion**, LightGBM (Part 8), makes the decisions. The
+**scorecard** is the *benchmark and fallback*: simpler and fully transparent, kept to show what
+the champion's extra complexity buys and to take over if the champion is ever suspended.
 
 We replace each of the 13 features by its bin's WoE, then fit a **logistic regression**. That's a
 formula which turns a weighted sum of the WoE values into a probability of default (PD) between 0 and 1.
-
 Because high WoE means low risk, every coefficient should be **negative**.
 """)
 code('''
 from optbinning import BinningProcess
 import statsmodels.api as sm
+
+roles = summary["model"]["roles"]                       # which model is champion, which is challenger
+metrics = summary["validation"]["metrics"]
+role_of = {model_name: role for role, model_name in roles.items()}   # e.g. {"lightgbm": "champion"}
+print("roles in the pipeline run:", roles)
 
 categorical = [c for c in selected if c in meta["categorical"]]
 
@@ -504,19 +512,19 @@ from sklearn.metrics import roc_auc_score
 
 oot_ids = pipe.loc[pipe["partition"] == "oot", "SK_ID_CURR"]
 y_all = pipe.set_index("SK_ID_CURR")["TARGET"]
-pd_oot = 1 / (1 + np.exp(-(coefs["intercept"] + W.loc[oot_ids, selected] @ coefs[selected])))
+pd_sc_oot = 1 / (1 + np.exp(-(coefs["intercept"] + W.loc[oot_ids, selected] @ coefs[selected])))
 
-auc = roc_auc_score(y_all.loc[oot_ids], pd_oot)
+auc = roc_auc_score(y_all.loc[oot_ids], pd_sc_oot)
 gini = 2 * auc - 1           # Gini is just a rescaled AUC
-print(f"OOT AUC {auc:.4f}  ->  Gini {gini:.4f}")
-check("champion OOT Gini", gini, summary["validation"]["metrics"]["champion"]["performance"]["oot"]["gini"])
+print(f"scorecard OOT AUC {auc:.4f}  ->  Gini {gini:.4f}")
+check("scorecard OOT Gini", gini, metrics[role_of["scorecard"]]["performance"]["oot"]["gini"])
 """)
 md("""
-### Points: turning the model into a scorecard
+### Points: why scorecards are easy to explain
 
-Banks show the model as **points**: add up the points for each characteristic, and a higher score
-means lower risk. The scaling used here is "20 points to double the odds" (PDO 20), with 600 points at
-50:1 odds:
+Banks show a scorecard as **points**: add up the points for each characteristic, and a higher
+score means lower risk. The scaling here is "20 points to double the odds" (PDO 20), with 600
+points at 50:1 odds:
 
 * `factor = 20 / ln(2)` and `offset = 600 − factor × ln(50)`
 * `points for a bin = −factor × coefficient × WoE + (offset − factor × intercept) / 13`
@@ -530,8 +538,7 @@ n = len(selected)
 applicant = int(oot_ids.iloc[0])
 w = W.loc[applicant, selected]
 points = -factor * coefs[selected] * w + (offset - factor * coefs["intercept"]) / n
-raw_vals = features.loc[applicant, selected]
-card = pd.DataFrame({"value": raw_vals, "WoE": w.round(3), "points": points.round(1)})
+card = pd.DataFrame({"value": features.loc[applicant, selected], "WoE": w.round(3), "points": points.round(1)})
 print("applicant", applicant)
 card
 """)
@@ -539,61 +546,67 @@ code("""
 score = points.sum()
 pd_applicant = 1 / (1 + np.exp(-(coefs["intercept"] + (w * coefs[selected]).sum())))
 scored = pd.read_parquet(ART / "model" / "scored.parquet")
-print(f"total score {score:.1f}  ->  PD {pd_applicant:.2%}")
+print(f"total score {score:.1f}  ->  scorecard PD {pd_applicant:.2%}")
 check("this applicant's score", score, scored.loc[applicant, "score"], 2)
-check("this applicant's PD", pd_applicant, scored.loc[applicant, "pd_champion"])
-""")
-md("""
-### The master scale: from PD to a rating grade
-
-PDs are grouped into 10 grades (grade 1 = best). If the model works, the observed default rate
-should rise grade by grade.
-""")
-code("""
-bounds = [0.005, 0.01, 0.02, 0.035, 0.05, 0.075, 0.10, 0.15, 0.25, 1.0]   # upper PD of each grade
-grade = np.searchsorted(bounds, pd_oot, side="left") + 1
-by_grade = pd.DataFrame({"grade": grade, "pd": pd_oot.to_numpy(), "default": y_all.loc[oot_ids].to_numpy()}) \\
-             .groupby("grade").agg(accounts=("pd", "size"), mean_pd=("pd", "mean"), default_rate=("default", "mean"))
-by_grade.style.format({"accounts": "{:,}", "mean_pd": "{:.2%}", "default_rate": "{:.2%}"})
-""")
-code("""
-fig, ax = plt.subplots()
-xs = np.arange(len(by_grade))
-ax.bar(xs - 0.18, by_grade["mean_pd"], width=0.34, color=BLUE, label="predicted PD")
-ax.bar(xs + 0.18, by_grade["default_rate"], width=0.34, color=ORANGE, label="observed default rate")
-ax.set_xticks(xs, by_grade.index)
-ax.set_xlabel("grade (OOT)")
-ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
-ax.legend(frameon=False)
-ax.set_title("Predicted and observed default rate rise together", loc="left", color=INK)
-plt.tight_layout()
+check("this applicant's scorecard PD", pd_applicant, scored.loc[applicant, "pd_scorecard"])
 """)
 
 # =========================================================================================
 md("""
-## 8. The challenger: LightGBM
+## 8. The champion: monotone LightGBM, explained with SHAP
 
 LightGBM builds hundreds of small decision trees, each one fixing the errors of the previous ones.
-It uses all 112 candidate features, raw rather than WoE, and finds interactions a scorecard can't.
-It usually ranks applicants better but is **much harder to explain**: there's no points table.
+It uses all 112 candidate features, raw rather than WoE, and finds interactions a scorecard can't,
+so it ranks applicants better. Two things make it acceptable as the champion:
 
-Its settings were tuned **offline, on train only**, and kept lean: depth 5, 15 leaves, at least 1,000
-applicants per leaf. Early stopping uses a 10% slice of train to choose the number of trees.
+1. **Monotonic constraints.** Each feature may push PD in one direction only, so the model can never
+   contradict credit logic (for example "more days past due lowers PD").
+2. **SHAP explanations.** Every individual prediction is split exactly into "how much each feature
+   pushed this applicant's PD up or down". That gives reason codes, the equivalent of the scorecard's points.
+
+### 8a. Which direction may each feature move PD?
+
+We read the direction from each feature's train-only binning: if the default rate rises bin by bin,
+the feature may only **raise** PD (+1); if it falls, only **lower** it (−1); categories are left free (0).
 """)
 code("""
 import lightgbm as lgb
-
 from pickle import load
 
-# The challenger uses every candidate feature that passed the missingness screen. The pipeline saved
-# that list inside its fitted binning object, so we read it from there.
 with open(ART / "selection" / "binning_process.pkl", "rb") as fh:
-    live = list(load(fh).variable_names)
+    bp_all = load(fh)                              # the pipeline's train-only binning of every candidate
+live = list(bp_all.variable_names)
 cands = [c for c in meta["candidates"] if c in live]
-print("challenger features:", len(cands))
 cat_all = [c for c in live if c in meta["categorical"]]
 
 
+def direction(feature):
+    if feature in cat_all:
+        return 0
+    t = bp_all.get_binned_variable(feature).binning_table.build().drop(index="Totals")
+    t = t[(t["Count"] > 0) & ~t["Bin"].astype(str).isin(["Special", "Missing"])]
+    rates = t["Event rate"].to_numpy()
+    if len(rates) < 2:
+        return 0
+    if np.all(np.diff(rates) >= 0):
+        return 1
+    if np.all(np.diff(rates) <= 0):
+        return -1
+    return 0
+
+
+signs = {f: direction(f) for f in cands}
+print(pd.Series(signs).value_counts().rename({1: "may only raise PD", -1: "may only lower PD", 0: "free"}))
+pd.Series({f: signs[f] for f in ["BEH_INS_DPD_MAX_12M", "APP_EXT_SOURCE_MEAN", "APP_AGE_YEARS",
+                                 "APP_ANNUITY_TO_INCOME", "PRV_REFUSED_SHARE"]}).rename("direction").to_frame()
+""")
+md("""
+### 8b. Fit the constrained model
+
+The settings were tuned **offline, on train only**, and kept lean: depth 5, 15 leaves, at least 1,000
+applicants per leaf. Early stopping uses a 10% slice of train to choose the number of trees.
+""")
+code("""
 def prepare_lgb(X):
     X = X.copy()
     for c in X.columns:
@@ -604,7 +617,9 @@ def prepare_lgb(X):
 params = dict(max_depth=5, num_leaves=15, min_child_samples=1000, n_estimators=1000,
               learning_rate=0.03, subsample=0.8, subsample_freq=1, colsample_bytree=0.7,
               reg_lambda=10.0, random_state=SEED, deterministic=True, force_row_wise=True,
-              n_jobs=4, verbose=-1)
+              n_jobs=4, verbose=-1,
+              monotone_constraints=[signs[c] for c in cands],     # the directions from 8a
+              monotone_constraints_method="intermediate")
 Xtr = prepare_lgb(features.loc[train_ids, cands])
 Xa, Xv, ya, yv = train_test_split(Xtr, y, test_size=0.10, stratify=y, random_state=SEED)
 probe = lgb.LGBMClassifier(**params).fit(Xa, ya, eval_X=Xv, eval_y=yv, eval_metric="auc",
@@ -612,18 +627,109 @@ probe = lgb.LGBMClassifier(**params).fit(Xa, ya, eval_X=Xv, eval_y=yv, eval_metr
 gbm = lgb.LGBMClassifier(**{**params, "n_estimators": probe.best_iteration_}).fit(Xtr, y)
 print("trees:", probe.best_iteration_)
 
-pd_gbm = gbm.predict_proba(prepare_lgb(features.loc[oot_ids, cands]))[:, 1]
+X_oot = prepare_lgb(features.loc[oot_ids, cands])
+pd_gbm = pd.Series(gbm.predict_proba(X_oot)[:, 1], index=oot_ids)
 gini_gbm = 2 * roc_auc_score(y_all.loc[oot_ids], pd_gbm) - 1
-check("challenger OOT Gini", gini_gbm, summary["validation"]["metrics"]["challenger"]["performance"]["oot"]["gini"])
+print(f"champion OOT Gini {gini_gbm:.4f} vs scorecard {gini:.4f}")
+check("champion (LightGBM) OOT Gini", gini_gbm, metrics[role_of["lightgbm"]]["performance"]["oot"]["gini"])
 """)
 code("""
-imp = pd.Series(gbm.booster_.feature_importance("gain"), index=gbm.booster_.feature_name())
-(imp / imp.sum()).sort_values(ascending=False).head(10).rename("share of gain").to_frame().style.format("{:.1%}")
+# What the extra Gini is worth: bad rate among approved applicants at the same approval rate.
+rows = []
+for approve in (0.6, 0.7, 0.8, 0.9):
+    r = {"approval rate": approve}
+    for name, p in (("scorecard", pd_sc_oot), ("LightGBM", pd_gbm)):
+        approved = p <= p.quantile(approve)
+        r[f"bad rate, {name}"] = y_all.loc[oot_ids][approved].mean()
+    rows.append(r)
+pd.DataFrame(rows).set_index("approval rate").style.format("{:.2%}")
+""")
+md("""
+### 8c. The master scale: from PD to a rating grade
+
+The champion's PDs are grouped into 10 grades (grade 1 = best). If the model works, the
+observed default rate should rise grade by grade.
+""")
+code("""
+bounds = [0.005, 0.01, 0.02, 0.035, 0.05, 0.075, 0.10, 0.15, 0.25, 1.0]   # upper PD of each grade
+grade = np.searchsorted(bounds, pd_gbm, side="left") + 1
+by_grade = pd.DataFrame({"grade": grade, "pd": pd_gbm.to_numpy(), "default": y_all.loc[oot_ids].to_numpy()}) \\
+             .groupby("grade").agg(accounts=("pd", "size"), mean_pd=("pd", "mean"), default_rate=("default", "mean"))
+by_grade.style.format({"accounts": "{:,}", "mean_pd": "{:.2%}", "default_rate": "{:.2%}"})
+""")
+code("""
+fig, ax = plt.subplots()
+xs = np.arange(len(by_grade))
+ax.bar(xs - 0.18, by_grade["mean_pd"], width=0.34, color=BLUE, label="predicted PD")
+ax.bar(xs + 0.18, by_grade["default_rate"], width=0.34, color=ORANGE, label="observed default rate")
+ax.set_xticks(xs, by_grade.index)
+ax.set_xlabel("grade (OOT, champion)")
+ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+ax.legend(frameon=False)
+ax.set_title("Predicted and observed default rate rise together", loc="left", color=INK)
+plt.tight_layout()
+""")
+md("""
+### 8d. SHAP: explaining one decision exactly
+
+For one applicant, SHAP gives a number per feature: how much it pushed the prediction up (+) or
+down (−), in *log-odds*. The baseline ("bias") plus all the contributions adds up **exactly** to
+the model's score for that applicant.
+""")
+code("""
+risky = int(pd_gbm.sort_values().index[-50])   # one of the riskiest OOT applicants
+contrib = gbm.booster_.predict(X_oot.loc[[risky]], pred_contrib=True)[0]     # LightGBM's built-in exact TreeSHAP
+shap_one = pd.Series(contrib[:-1], index=cands)
+bias = contrib[-1]
+log_odds = bias + shap_one.sum()
+print(f"applicant {risky}: PD {pd_gbm[risky]:.1%}")
+print(f"bias {bias:.3f} + sum of contributions {shap_one.sum():.3f} = {log_odds:.3f} log-odds"
+      f" -> PD {1 / (1 + np.exp(-log_odds)):.1%}")
+shap_one.sort_values(ascending=False).head(8).rename("pushes PD up by (log-odds)").to_frame().round(3)
+""")
+md("""
+### 8e. Reason codes, grouped into families
+
+Several features measure the same thing; for example the three external scores and their mean and
+minimum. Listing all of them as separate reasons would be confusing on a decline letter, so the
+pipeline adds contributions up within **reason families** and reports the top families.
+""")
+code("""
+import re
+
+families = json.loads((RUN / "config_snapshot.json").read_text())["base"]["explain"]["families"]
+
+
+def family_of(feature):
+    for fam in families:
+        if any(re.search(p, feature) for p in fam["patterns"]):
+            return fam["label"]
+
+
+by_family = shap_one.groupby(shap_one.index.map(family_of)).sum().sort_values(ascending=False)
+my_reasons = by_family[by_family > 0].head(4)
+my_reasons.rename("pushes PD up by (log-odds)").to_frame().round(3)
+""")
+code("""
+pipeline_reasons = pd.read_parquet(ART / "explain" / "reason_families_oot.parquet")
+theirs = pipeline_reasons[pipeline_reasons["SK_ID_CURR"] == risky].sort_values("rank")
+print("pipeline's reason families for this applicant:", list(theirs["reason"]))
+print("same reasons in the same order:", "✓" if list(theirs["reason"]) == list(my_reasons.index) else "✗")
+""")
+code("""
+# Across all OOT applicants: which families carry the most weight?
+fam_share = pd.Series(summary["explain"]["family_shares"])
+fig, ax = plt.subplots(figsize=(7, 3.8))
+ax.barh(fam_share.index[::-1], fam_share.values[::-1], color=BLUE, height=0.6)
+ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+ax.grid(axis="x"); ax.grid(axis="y", visible=False)
+ax.set_title("Share of the champion's explanatory weight, by reason family", loc="left", color=INK)
+plt.tight_layout()
 """)
 
 # =========================================================================================
 md("""
-## 9. Validation: is the model any good?
+## 9. Validation: is the champion any good?
 
 A second line of defence checks the model independently. The key measures:
 
@@ -649,8 +755,9 @@ perf = pd.DataFrame(rows).set_index("partition")
 perf.style.format({"AUC": "{:.4f}", "Gini": "{:.4f}", "KS": "{:.4f}", "mean PD": "{:.2%}", "default rate": "{:.2%}"})
 """)
 md("""
-**What to notice.** Train and OOT Gini are almost the same, so the scorecard isn't overfitting:
-it does as well on new applicants as on the ones it learned from.
+**What to notice.** Train Gini is somewhat higher than OOT: a tree model learns its training data a
+little too well, but the gap is within the tolerance the validator allows. The mean PD matches the
+default rate in every partition.
 """)
 code("""
 # Calibration by PD decile on OOT: sort applicants by PD into 10 equal groups.
@@ -667,36 +774,41 @@ ax.set_xlabel("average predicted PD"); ax.set_ylabel("observed default rate")
 for axis in (ax.xaxis, ax.yaxis):
     axis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
 ax.legend(frameon=False, loc="upper left")
-ax.set_title("Calibration: dots sit on the diagonal", loc="left", color=INK)
+ax.set_title("Calibration: dots close to the diagonal", loc="left", color=INK)
 plt.tight_layout()
 """)
 code("""
-# PSI by hand: compare the score distribution of train and OOT over 10 score bands from train.
-train_scores = scored.loc[train_ids, "score"]
-edges = np.quantile(train_scores, np.linspace(0, 1, 11)); edges[0], edges[-1] = -np.inf, np.inf
-share_train = pd.cut(train_scores, edges).value_counts(normalize=True, sort=False)
-share_oot = pd.cut(scored.loc[oot_ids, "score"], edges).value_counts(normalize=True, sort=False)
+# PSI by hand: compare the champion's PD distribution in train and OOT over 10 bands from train.
+train_pd = scored.loc[train_ids, "pd_champion"]
+edges = np.unique(np.quantile(train_pd, np.linspace(0, 1, 11))); edges[0], edges[-1] = -np.inf, np.inf
+share_train = pd.cut(train_pd, edges, labels=False).value_counts(normalize=True, sort=False)
+share_oot = pd.cut(scored.loc[oot_ids, "pd_champion"], edges, labels=False).value_counts(normalize=True, sort=False)
 psi = ((share_oot - share_train) * np.log(share_oot / share_train)).sum()
 print(f"PSI train vs OOT: {psi:.4f}  (near zero, because OOT is a random holdout)")
-check("score PSI", psi, summary["validation"]["metrics"]["stability"]["score_psi"]["train_vs_oot"])
+check("PSI", psi, metrics["stability"]["score_psi"]["train_vs_oot"])
 """)
 code("""
-# Grade-level calibration test (binomial): if grade 8's true PD were its average PD, how surprising
+# Grade-level calibration test (binomial): if a grade's true PD were its average PD, how surprising
 # would the observed number of defaults be? A small p-value means the model under-predicts risk.
 from scipy import stats
 
-g8 = by_grade.loc[8]
-defaults = round(g8["default_rate"] * g8["accounts"])
-p_value = stats.binom.sf(defaults - 1, int(g8["accounts"]), g8["mean_pd"])
-print(f"grade 8: {int(g8['accounts']):,} accounts, {defaults} defaults, mean PD {g8['mean_pd']:.2%}")
-print(f"p-value {p_value:.4f}  ->", "amber (worth watching)" if p_value < 0.05 else "green")
+for g in (3, 8):
+    row = by_grade.loc[g]
+    defaults = round(row["default_rate"] * row["accounts"])
+    p_value = stats.binom.sf(defaults - 1, int(row["accounts"]), row["mean_pd"])
+    verdict = "red" if p_value <= 0.01 else "amber" if p_value <= 0.05 else "green"
+    print(f"grade {g}: {int(row['accounts']):,} accounts, {defaults} defaults vs mean PD {row['mean_pd']:.2%}"
+          f" -> p-value {p_value:.4f} ({verdict})")
 """)
 md("""
+**What to notice.** The champion's calibration is good overall but not perfect: in some grades it
+slightly *under*-predicts risk. The validator records this as a medium finding to monitor, and a
+grade-level recalibration is a possible fix. This is the honest cost of the more complex model.
+
 ### The validator's findings
 
 The pipeline's validator turns these measures into **findings** with a severity. Any **red**
-finding would stop the run. Here there are none; the medium ones are honest limitations to document
-and monitor.
+finding would stop the run. Here there are none; the medium ones are limitations to document and monitor.
 """)
 code("""
 findings = pd.DataFrame(json.loads((ART / "validation" / "findings.json").read_text()))
@@ -731,7 +843,7 @@ loan = acct.loc[loan_id]
 P = float(app.set_index("SK_ID_CURR").loc[loan_id, "AMT_CREDIT"])   # loan amount
 A = float(app.set_index("SK_ID_CURR").loc[loan_id, "AMT_ANNUITY"])  # monthly instalment
 print(f"loan amount {P:,.0f} | monthly instalment {A:,.0f} | stage {loan['stage']} ({loan['triggers']})")
-print(f"12-month PD from the scorecard: {loan['pd12']:.2%}")
+print(f"12-month PD from the champion (LightGBM): {loan['pd12']:.2%}")
 """)
 md("""
 **Step 1: the interest rate.** We know the loan amount and the instalment, but not the term or the rate:
@@ -861,6 +973,7 @@ Everything above is **deterministic**: same data and settings, same numbers. The
 (we call them agents), and each node declares exactly which information it reads and writes.
 
 * Four **leg** nodes build features *in parallel*.
+* An **explain** node computes the SHAP reason codes for the champion.
 * **Gates** stop the run if data quality or validation fails.
 * Only **two** nodes use an LLM (a large language model such as Gemini):
   * the **critic**, which challenges the results like a sceptical validator and may only request

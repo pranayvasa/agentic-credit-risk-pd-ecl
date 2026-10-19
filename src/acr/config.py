@@ -105,9 +105,16 @@ class LGBMFitCfg(_Strict):
     monotone_method: Literal["basic", "intermediate", "advanced"] = "intermediate"
 
 
+class ReasonFamily(_Strict):
+    family: str
+    label: str
+    patterns: list[str]
+
+
 class ExplainCfg(_Strict):
     reason_codes: int = Field(ge=1, le=10)
     stability_top_n: int = Field(ge=3, le=30)
+    families: list[ReasonFamily] = []
 
 
 class CalibrationCfg(_Strict):
@@ -117,6 +124,7 @@ class CalibrationCfg(_Strict):
 
 
 class ModelCfg(_Strict):
+    champion: Literal["lightgbm", "scorecard"] = "lightgbm"
     scorecard: ScorecardCfg
     lightgbm_fit: LGBMFitCfg
     calibration: CalibrationCfg
