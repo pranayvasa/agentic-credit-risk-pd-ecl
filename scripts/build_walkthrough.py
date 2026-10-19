@@ -53,9 +53,9 @@ executes each step on a **10% stratified sample** of the public Home Credit data
 this notebook is deterministic: fixed seed, versioned config, the same inputs give the same
 numbers. The LLM critic and documentation agents (Phase 6) sit *around* this core.
 
-**Status.** Phases 1–4 are built: skeleton, data quality, split, legs, feature selection,
-modelling (plus offline tuning) and independent validation. ECL, the LLM critic,
-documentation and the grounding check are still stubs; they come in Phases 5–6.
+**Status.** Phases 1–5 are built: skeleton, data quality, split, legs, feature selection,
+modelling (plus offline tuning), independent validation and the illustrative RBI ECL layer.
+The LLM critic, documentation and the grounding check are still stubs; they come in Phase 6.
 
 | § | Stage | Graph node(s) | Main source files |
 |---|---|---|---|
@@ -69,7 +69,8 @@ documentation and the grounding check are still stubs; they come in Phases 5–6
 | 8 | Feature selection | `select` | `core/binning.py`, `core/selection.py` |
 | 9 | Modelling | `model` | `core/scorecard.py`, `core/challenger.py`, `core/calibration.py` |
 | 10 | Independent validation | `validate` | `core/validation.py`, `core/findings.py` |
-| 11 | Gates and the rest of the graph | routing, `halt` | `graph.py`, `nodes/halt.py` |
+| 11 | Illustrative RBI ECL | `ecl` | `core/ecl/*.py`, `nodes/ecl.py` |
+| 11b | Gates and the rest of the graph | routing, `halt` | `graph.py`, `nodes/halt.py` |
 | 12 | Offline tuning | `acr tune` (not in the graph) | `tuning.py` |
 | 13 | Tests | | `tests/` |
 """)
@@ -80,12 +81,11 @@ md(
 code('''
 # --- Imports --------------------------------------------------------------------------
 import inspect
-import json
 import sys
 from pathlib import Path
 
 import pandas as pd
-from IPython.display import Code, Markdown, display
+from IPython.display import Code, display
 
 # Make the repo importable when the notebook is opened from notebooks/
 ROOT = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()
@@ -554,14 +554,83 @@ display(pd.read_csv(v["paths"]["segments_oot"]).round(3))
 
 # ---------------------------------------------------------------------------------------
 md("""
-## 11. Gates and the rest of the graph
+## 11. Illustrative RBI ECL (node `ecl`)
+
+**Illustrative simulation.** Home Credit is an application-level dataset, not a live book.
+The pseudo-OOT partition is treated as a book at a simulated reporting date, with every loan
+at origination. Regulatory parameters are in `config/ecl_rbi.yaml` with paragraph
+citations to RBI/DOR/2026-27/398 (Directions dated 27 April 2026, effective 1 April 2027).
+
+| Component | Approach | Source |
+|---|---|---|
+| Stage 3 | more than 90 DPD in the last 12 months on prior Home Credit loans (borrower level) | para 25, NPA definition |
+| Stage 2 | more than 30 DPD (Home Credit or bureau), or grade down ≥ 3 notches vs the origination proxy, or PD ≥ 2× proxy PD and ≥ 5% | para 33 presumption; para 26 relative test (proxy, D6) |
+| 12-month PD | champion PD, floored at 0.03% | para 96 |
+| Lifetime PD | constant hazard (primary) and a bureau DPD-bucket Markov chain scaled to each 12-month PD | D4 |
+| Term and EIR | monthly rate implied by prior approved Home Credit loans (train customers); term solved from the annuity formula | D26 |
+| EAD | amortising balance; revolving: limit × CCF over a 24-month life | para 46(2)(iii) |
+| LGD | 70% unsecured backstop, with a sensitivity ladder | para 97 |
+| Scenarios | base / upside / downside, weights and PD scalars (illustrative) | para 48 |
+| Floors | Stage 1 1%, Stage 2 5%, Stage 3 25% in the first year | para 82(3)(x) |
+
+The engine works at LGD = 1, so the LGD sensitivity is exact (ECL is linear in LGD).
+Implied rates and the transition matrix are learned from **train customers only**.
+""")
+code("""
+import acr.core.ecl.rates
+show(acr.core.ecl.rates)
+""")
+code("""
+import acr.core.ecl.staging
+show(acr.core.ecl.staging)
+""")
+code("""
+import acr.core.ecl.lifetime
+show(acr.core.ecl.lifetime)
+""")
+code("""
+import acr.core.ecl.engine
+show(acr.core.ecl.engine)
+""")
+code("""
+import acr.nodes.ecl
+show(acr.nodes.ecl)
+""")
+code("""
+from acr.nodes.ecl import ecl
+
+step(ecl, state)
+E = state["ecl"]
+print("book:", E["book"])
+print("implied monthly rates:", E["assumptions"]["implied_monthly_rates"])
+print("stage counts:", E["stage_counts"], "| triggers:", E["stage_triggers"])
+print("QC checks:", E["checks"])
+""")
+code("""
+# ECL by stage: model ECL, after RBI floors (final), coverage and realised default rate
+display(pd.read_csv(E["paths"]["by_stage"], index_col=0).round(4))
+""")
+code("""
+# Scenarios (staging is fixed; PD scalars move ECL), lifetime-method comparison, LGD sensitivity
+display(pd.read_csv(E["paths"]["by_scenario"], index_col=0).round(0))
+display(pd.read_csv(E["paths"]["methods"], index_col=0).round(4))
+display(pd.read_csv(E["paths"]["lgd"]).round(4))
+""")
+code("""
+# Monthly DPD-bucket transition matrix estimated from bureau_balance (train customers)
+display(pd.read_csv(E["paths"]["transition_matrix"], index_col=0).round(4))
+""")
+
+# ---------------------------------------------------------------------------------------
+md("""
+## 11b. Gates and the rest of the graph
 
 The routing functions in `graph.py` (shown in §3) read the status each gate node wrote and
 pick the next node; each routing decision is logged to the audit trail. If a gate says
 `halt`, the `halt` node writes `halt_report.md` listing the red findings.
 
-Still stubs, built in later phases: `ecl` (Phase 5), and `critic`, `run_extra_analyses`,
-`document` and `grounding_check` (Phase 6). The critic loop already runs in dry-run mode
+Still stubs, built in Phase 6: `critic`, `run_extra_analyses`, `document` and
+`grounding_check`. The critic loop already runs in dry-run mode
 with canned responses, to prove the bounded loop and the whitelist work.
 """)
 code("""

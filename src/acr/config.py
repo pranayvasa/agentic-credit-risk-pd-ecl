@@ -204,9 +204,35 @@ class Scenario(_Strict):
     pd_scalar: float = Field(gt=0)
 
 
+class BookCfg(_Strict):
+    partition: Literal["train", "test", "oot"]
+    seasoning_months: int = Field(ge=0)
+
+
+class TermCfg(_Strict):
+    rate_source: Literal["previous_application"]
+    min_months: int = Field(ge=1)
+    max_months: int = Field(ge=1)
+    fallback_monthly_rate: float = Field(gt=0, lt=1)
+
+
+class RevolvingCfg(_Strict):
+    life_months: int = Field(ge=1)
+    ccf: float = Field(gt=0, le=1)
+
+
+class LifetimeCfg(_Strict):
+    primary: Literal["constant_hazard", "markov"]
+    markov_default_bucket: int = Field(ge=1, le=5)
+
+
 class ECLCfg(_Strict):
     regulation: dict[str, str]
     product_category: str
+    book: BookCfg
+    term: TermCfg
+    revolving: RevolvingCfg
+    lifetime: LifetimeCfg
     pd: dict[str, float]
     lgd: dict[str, float | list[float]]
     staging: dict[str, float | int]

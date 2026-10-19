@@ -10,6 +10,32 @@ regulation:
 
 product_category: unsecured_retail     # para 82(3)(x)
 
+book:
+  # The pseudo-OOT partition is treated as a book at a simulated reporting date. Every loan
+  # is assumed to be at origination (seasoning 0), so remaining term = contractual term.
+  partition: oot
+  seasoning_months: 0
+
+term:
+  # AMT_CREDIT and AMT_ANNUITY alone cannot identify both term and rate (one equation, two
+  # unknowns). The monthly rate per contract type is the median rate implied by prior
+  # approved Home Credit loans in previous_application (credit, annuity and CNT_PAYMENT are
+  # all known there), using train customers only. Each loan's term is then solved from the
+  # annuity formula at that rate. The same rate is the EIR used for discounting.
+  rate_source: previous_application
+  min_months: 3
+  max_months: 120
+  fallback_monthly_rate: 0.02          # used only if no prior loans of that type exist
+
+revolving:
+  # Para 46(2)(iii): for revolving facilities the bank determines the measurement period.
+  life_months: 24                      # illustrative behavioural life
+  ccf: 1.0                             # illustrative: limit treated as fully drawn (prudent)
+
+lifetime:
+  primary: constant_hazard             # constant_hazard | markov (both are always reported)
+  markov_default_bucket: 4             # bureau_balance bucket 4+ = more than 90 DPD (absorbing)
+
 pd:
   floor_12m: 0.0003                    # para 96: 12-month PD regulatory minimum 0.03%
 
