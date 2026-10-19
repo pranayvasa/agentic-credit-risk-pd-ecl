@@ -372,7 +372,7 @@ Every design choice that refines or departs from the original brief is recorded 
 
 **Pranay Vasa**: Chartered Accountant with seven years in BFSI credit risk and analytics, including multi-leg PD model development (application, behavioural, bureau and transaction data). This repository uses public data only; it contains no employer data, code or methodology.
 
-[GitHub](https://github.com/pranayvasa) · [LinkedIn](https://www.linkedin.com/in/LINKEDIN_HANDLE)
+[GitHub](https://github.com/pranayvasa) · [LinkedIn](https://www.linkedin.com/in/pranayvasa)
 
 ## Licence
 
