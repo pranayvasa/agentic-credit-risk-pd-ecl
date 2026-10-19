@@ -16,6 +16,7 @@ def test_graph_compiles_with_all_nodes():
         *LEG_NODES,
         "select",
         "model",
+        "explain",
         "validate",
         "ecl",
         "critic",

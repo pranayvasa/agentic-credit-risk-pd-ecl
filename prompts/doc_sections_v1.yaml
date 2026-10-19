@@ -96,6 +96,26 @@ documents:
           The challenger reaches OOT Gini {challenger.performance.oot.gini:.4f} (AUC
           {challenger.performance.oot.auc:.4f}), {comparison.diff:.4f} higher than the champion.
         tables: [performance_table, calibration_table]
+      - id: explainability
+        title: Explainability of the challenger
+        guidance: >-
+          Explain how the LightGBM challenger is made explainable: monotonic constraints from
+          train-only WoE trends, exact TreeSHAP attributions, per-applicant reason codes, importance by
+          leg, and the stability and constraint checks. State the SHAP caveats (attribution, not cause;
+          correlated features share credit).
+        template: >-
+          The challenger is constrained so that {challenger.monotone.increasing} features can only raise PD
+          as they rise and {challenger.monotone.decreasing} can only lower it, following their train-only
+          WoE trends; {challenger.monotone.free} categorical or flat features are unconstrained. Every
+          OOT prediction is decomposed with exact TreeSHAP ({explain.applicants_explained:,} applicants;
+          attributions reconcile to the model score within {explain.additivity_max_error:.1e} in log-odds),
+          and each applicant receives the {explain.reason_codes_per_applicant} factors that raised their PD
+          most. A sweep test found {explain.monotone.violating_rows} violations of the constraints. The top
+          drivers are stable: test and OOT share {explain.stability.test_vs_oot.top_overlap:.0%} of the top
+          {explain.stability.test_vs_oot.top_n}. External scores carry {explain.external_score_share:.0%} of
+          mean absolute SHAP. SHAP describes attribution, not causation, and correlated features can share
+          credit, so importance is also shown by leg.
+        tables: [shap_table, explain_checks_table]
       - id: limitations
         title: Assumptions and limitations
         guidance: >-

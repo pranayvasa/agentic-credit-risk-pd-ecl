@@ -31,5 +31,7 @@ validation:
   external_score_share_max: 0.50   # share of scorecard points range from EXT_SOURCE features
   grade_share_min: 0.01
   grade_share_max: 0.30
+  shap_top_overlap_min: 0.70  # top-10 SHAP drivers shared between samples (halves, test, train)
+  shap_spearman_min: 0.80      # rank correlation of mean |SHAP| across all features
   bootstrap_n: 200             # resamples for the champion-vs-challenger Gini difference
   stress_young_weights: [3, 10, 50]   # stress-PSI ladder: weight on applicants under 30 in the OOT book

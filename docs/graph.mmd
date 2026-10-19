@@ -14,6 +14,7 @@ graph TD;
 	leg_previous(leg_previous)
 	select(select)
 	model(model)
+	explain(explain)
 	validate(validate)
 	ecl(ecl)
 	critic(critic)
@@ -28,6 +29,7 @@ graph TD;
 	critic -.-> run_extra_analyses;
 	document --> grounding_check;
 	ecl --> critic;
+	explain --> validate;
 	grounding_check --> assemble_report;
 	ingest_dq -.-> halt;
 	ingest_dq -.-> split;
@@ -35,7 +37,7 @@ graph TD;
 	leg_behavioural --> select;
 	leg_bureau --> select;
 	leg_previous --> select;
-	model --> validate;
+	model --> explain;
 	run_extra_analyses --> critic;
 	select --> model;
 	setup --> ingest_dq;

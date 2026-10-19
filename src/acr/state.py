@@ -93,6 +93,9 @@ class PipelineState(TypedDict, total=False):
     # --- modelling (champion + challenger) ---
     model: dict[str, Any]
 
+    # --- explainability (SHAP for the challenger) ---
+    explain: dict[str, Any]
+
     # --- independent validation (read-only over model artefacts) ---
     validation: dict[str, Any]
 

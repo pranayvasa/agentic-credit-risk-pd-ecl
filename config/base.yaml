@@ -65,6 +65,10 @@ model:
   lightgbm_fit:
     validation_frac: 0.10    # internal early-stopping split carved out of train (never test)
     early_stopping_rounds: 50
+    # Monotonic constraints: each numeric feature's effect on PD may only move in the direction
+    # of its train-only WoE trend (categoricals and flat features stay unconstrained).
+    monotone: true
+    monotone_method: intermediate   # LightGBM: basic | intermediate | advanced
   calibration:
     cv_folds: 5              # out-of-fold predictions on train drive the calibration decision
     ece_max: 0.005           # recalibrate if OOF decile ECE exceeds this
@@ -83,3 +87,8 @@ model:
   master_scale:
     # Upper PD bounds of grades 1..10; grade D (default) is assigned outside the model.
     pd_upper_bounds: [0.005, 0.01, 0.02, 0.035, 0.05, 0.075, 0.10, 0.15, 0.25, 1.0]
+
+explain:
+  # Exact TreeSHAP (LightGBM pred_contrib) for the challenger on every OOT applicant.
+  reason_codes: 4                 # top factors raising PD, reported per applicant
+  stability_top_n: 10             # top-N features compared across halves and partitions

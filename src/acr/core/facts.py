@@ -173,6 +173,13 @@ def build_facts(state: Mapping[str, Any]) -> dict:
                          "list": [{k: x[k] for k in ("id", "severity", "area", "title", "detail", "remediation")}
                                   for x in v["findings"]],
                          "gate_decision": v["gate_decision"]}  # fmt: skip
+    ex = state.get("explain")
+    if ex:
+        f["explain"] = {k: ex[k] for k in ("method", "applicants_explained", "additivity_max_error",
+                                           "top_features", "leg_shares", "external_score_share",
+                                           "stability", "monotone", "reason_codes_per_applicant",
+                                           "gender_pd_to_dr")}  # fmt: skip
+        f["challenger"]["monotone"] = mdl["challenger"].get("monotone")
     ecl = state.get("ecl")
     if ecl:
         f["ecl"] = {

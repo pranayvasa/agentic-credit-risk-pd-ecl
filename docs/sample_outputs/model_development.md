@@ -1,6 +1,6 @@
 # Model Development Document — PD scorecard
 
-> Run `20261019T041619Z_full_21f3ba7a1ecd` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
+> Run `20261019T052034Z_full_975e6130602a` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
 
 ## 1. Purpose and intended use
 
@@ -62,26 +62,61 @@ Of 114 engineered features, 112 were candidates (gender and marital status are p
 
 ## 5. Performance
 
-The champion achieves OOT Gini 0.5008 (AUC 0.7504) against 0.5041 on train, so there is no material overfitting. OOT calibration is close: decile ECE 0.0023 and calibration slope 1.003. The challenger reaches OOT Gini 0.5761 (AUC 0.7881), 0.0753 higher than the champion.
+The champion achieves OOT Gini 0.5008 (AUC 0.7504) against 0.5041 on train, so there is no material overfitting. OOT calibration is close: decile ECE 0.0023 and calibration slope 1.003. The challenger reaches OOT Gini 0.5602 (AUC 0.7801), 0.0594 higher than the champion.
 
 | Model | Partition | Gini | AUC | KS | Mean PD | Default rate |
 |---|---|---|---|---|---|---|
 | champion | train | 0.5041 | 0.7521 | 0.3782 | 8.07% | 8.07% |
 | champion | test | 0.4896 | 0.7448 | 0.3676 | 8.06% | 8.07% |
 | champion | oot | 0.5008 | 0.7504 | 0.3769 | 8.04% | 8.07% |
-| challenger | train | 0.6791 | 0.8396 | 0.5203 | 8.07% | 8.07% |
-| challenger | test | 0.5704 | 0.7852 | 0.4297 | 8.06% | 8.07% |
-| challenger | oot | 0.5761 | 0.7881 | 0.4362 | 8.07% | 8.07% |
+| challenger | train | 0.6120 | 0.8060 | 0.4623 | 8.07% | 8.07% |
+| challenger | test | 0.5520 | 0.7760 | 0.4115 | 8.07% | 8.07% |
+| challenger | oot | 0.5602 | 0.7801 | 0.4263 | 8.08% | 8.07% |
 
 | Model (OOT) | Decile ECE | Slope | HL p-value | Mean PD / DR |
 |---|---|---|---|---|
 | champion | 0.0023 | 1.003 | 0.3162 | 0.996 |
-| challenger | 0.0026 | 1.004 | 0.1081 | 0.999 |
+| challenger | 0.0035 | 0.957 | 0.0059 | 1.001 |
 
-## 6. Assumptions and limitations
+## 6. Explainability of the challenger
+
+The challenger is constrained so that 53 features can only raise PD as they rise and 38 can only lower it, following their train-only WoE trends; 21 categorical or flat features are unconstrained. Every OOT prediction is decomposed with exact TreeSHAP (76,878 applicants; attributions reconcile to the model score within 0.0e+00 in log-odds), and each applicant receives the 4 factors that raised their PD most. A sweep test found 0 violations of the constraints. The top drivers are stable: test and OOT share 100% of the top 10. External scores carry 22% of mean absolute SHAP. SHAP describes attribution, not causation, and correlated features can share credit, so importance is also shown by leg.
+
+| Feature | Leg | Share of mean abs SHAP | Constraint |
+|---|---|---|---|
+| APP_EXT_SOURCE_MEAN | application | 11.0% | PD can only fall with it |
+| APP_ANNUITY_TO_INCOME | application | 3.7% | PD can only rise with it |
+| APP_CREDIT_TO_GOODS | application | 3.5% | PD can only rise with it |
+| BEH_INS_COUNT | behavioural | 3.4% | PD can only fall with it |
+| APP_ORGANIZATION_TYPE | application | 3.2% | unconstrained |
+| APP_EXT_SOURCE_MIN | application | 3.1% | PD can only fall with it |
+| APP_OCCUPATION_TYPE | application | 2.8% | unconstrained |
+| BEH_POS_REMAINING_INSTALMENTS | behavioural | 2.7% | PD can only rise with it |
+| APP_EXT_SOURCE_3 | application | 2.7% | PD can only fall with it |
+| PRV_CNT_PAYMENT_MEAN | previous | 2.7% | PD can only rise with it |
+
+| Leg | Share of mean abs SHAP |
+|---|---|
+| application | 53.7% |
+| behavioural | 20.9% |
+| previous | 13.6% |
+| bureau | 11.8% |
+
+| Check | Result |
+|---|---|
+| Applicants explained (OOT) | 76,878 |
+| SHAP additivity, max error (log-odds) | 0.0e+00 |
+| Monotonic constraints: features tested / violating rows | 91 / 0 |
+| Top-10 driver overlap / rank correlation, oot half vs half | 100% / 1.000 |
+| Top-10 driver overlap / rank correlation, test vs oot | 100% / 1.000 |
+| Top-10 driver overlap / rank correlation, train vs oot | 100% / 1.000 |
+| Challenger mean PD / default rate, gender F | 1.064 |
+| Challenger mean PD / default rate, gender M | 0.918 |
+
+## 7. Assumptions and limitations
 
 Key limitations: (1) the OOT holdout is random, so temporal stability is untested; (2) the target is payment difficulty, not 90+ DPD; (3) undisclosed external scores carry 52% of the scorecard's points range, and without them OOT Gini falls below the gate (see the external-score sensitivity); (4) the data has no origination-date PD, so ECL staging uses a proxy; (5) the ECL calculation is an illustrative simulation on a pseudo-book, not a portfolio provision.
 
-## 7. Governance and reproducibility
+## 8. Governance and reproducibility
 
-Run 20261019T041619Z_full_21f3ba7a1ecd used seed 42 and configuration hash 21f3ba7a1ecd; the same inputs reproduce the same numbers. Every fitting step is guarded to accept train rows only. Each graph node logs its inputs, outputs, gate decisions and timings to an audit trail. The independent validator works on saved outputs only and verifies model artefact checksums. LLM agents critique and document; they cannot change model parameters.
+Run 20261019T052034Z_full_975e6130602a used seed 42 and configuration hash 975e6130602a; the same inputs reproduce the same numbers. Every fitting step is guarded to accept train rows only. Each graph node logs its inputs, outputs, gate decisions and timings to an audit trail. The independent validator works on saved outputs only and verifies model artefact checksums. LLM agents critique and document; they cannot change model parameters.

@@ -1,6 +1,6 @@
 # Ongoing Monitoring Plan — PD scorecard
 
-> Run `20261019T041619Z_full_21f3ba7a1ecd` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
+> Run `20261019T052034Z_full_975e6130602a` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
 
 ## 1. Objectives
 
@@ -33,16 +33,17 @@ The validation findings below set the monitoring priorities.
 | ID | Severity | Area | Finding |
 |---|---|---|---|
 | V01 | medium | Performance | Champion test Gini close to gate |
-| V02 | medium | Benchmarking | Challenger overfits the training data |
-| V03 | medium | Benchmarking | Challenger materially outperforms champion |
-| V04 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
-| V05 | info | Stability | External population (application_test) score distribution stable |
-| V06 | low | Calibration | Amber calibration in some grades (OOT) |
-| V07 | low | Master scale | Sparsely populated grades |
-| V08 | low | Segments | Segment calibration off in contract_type = Revolving loans |
-| V09 | low | Segments | Segment calibration off in income_type = Commercial associate |
-| V10 | low | Segments | Segment calibration off in income_type = Pensioner |
-| V11 | low | Segments | Segment calibration off in income_type = State servant |
-| V12 | low | Segments | Segment calibration off in age_band = <30 |
-| V13 | medium | Conceptual soundness | Heavy reliance on undisclosed external scores |
-| V14 | medium | Conceptual soundness | Target is not the regulatory default definition |
+| V02 | medium | Benchmarking | Challenger materially outperforms champion |
+| V03 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
+| V04 | info | Stability | External population (application_test) score distribution stable |
+| V05 | low | Calibration | Amber calibration in some grades (OOT) |
+| V06 | low | Master scale | Sparsely populated grades |
+| V07 | low | Segments | Segment calibration off in contract_type = Revolving loans |
+| V08 | low | Segments | Segment calibration off in income_type = Commercial associate |
+| V09 | low | Segments | Segment calibration off in income_type = Pensioner |
+| V10 | low | Segments | Segment calibration off in income_type = State servant |
+| V11 | low | Segments | Segment calibration off in age_band = <30 |
+| V12 | medium | Conceptual soundness | Heavy reliance on undisclosed external scores |
+| V13 | info | Explainability | Monotonic constraints verified |
+| V14 | info | Explainability | Challenger explanations are stable |
+| V15 | medium | Conceptual soundness | Target is not the regulatory default definition |

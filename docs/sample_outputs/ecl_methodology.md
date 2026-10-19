@@ -1,6 +1,6 @@
 # ECL Methodology Note — illustrative RBI ECL
 
-> Run `20261019T041619Z_full_21f3ba7a1ecd` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
+> Run `20261019T052034Z_full_975e6130602a` · generated 2026-10-19 · LLM mode: dry-run · portfolio project on public Home Credit data, not a production model. Every number in this document is checked by the grounding check (`grounding_report.md`).
 
 ## 1. Scope and status
 

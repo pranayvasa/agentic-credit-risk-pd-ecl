@@ -9,6 +9,7 @@ from acr.config import AppConfig
 from acr.nodes.critic import critic
 from acr.nodes.document import document
 from acr.nodes.ecl import ecl
+from acr.nodes.explain import explain
 from acr.nodes.extras import run_extra_analyses
 from acr.nodes.grounding import grounding_check
 from acr.nodes.halt import halt
@@ -66,6 +67,7 @@ def build_graph():
         g.add_node(name, fn)
     g.add_node("select", select)
     g.add_node("model", model)
+    g.add_node("explain", explain)
     g.add_node("validate", validate)
     g.add_node("ecl", ecl)
     g.add_node("critic", critic)
@@ -85,7 +87,8 @@ def build_graph():
     g.add_edge(list(LEG_NODES), "select")
 
     g.add_edge("select", "model")
-    g.add_edge("model", "validate")
+    g.add_edge("model", "explain")
+    g.add_edge("explain", "validate")
     g.add_conditional_edges("validate", route_after_validation, {"ecl": "ecl", "halt": "halt"})
     g.add_edge("ecl", "critic")
     g.add_conditional_edges(

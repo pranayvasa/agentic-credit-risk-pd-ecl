@@ -87,9 +87,12 @@ def model(view):
     excluded = set(c.base.features.exclude_features)
     cands = [f for f in meta["candidates"] if f in live and f not in excluded]
     Xtr = require_partition(features.loc[train_ids, cands], a.reset_index(), "train")
-    lgbm = C.fit_challenger(Xtr, ytr, cat_live, dict(m.lightgbm), m.lightgbm_fit, seed)
+    # Monotonic constraints: directions from the train-only WoE binning trends.
+    signs = C.monotone_signs(bp, cands, cat_live) if m.lightgbm_fit.monotone else None
+    lgbm = C.fit_challenger(Xtr, ytr, cat_live, dict(m.lightgbm), m.lightgbm_fit, seed, signs)
     n_trees = int(lgbm.n_estimators)
-    fixed = {**dict(m.lightgbm), "n_estimators": n_trees}
+    fixed = C.constrained({**dict(m.lightgbm), "n_estimators": n_trees}, cands, signs,
+                          m.lightgbm_fit.monotone_method)  # fmt: skip
 
     def gb_fp(Xa, ya, Xb):
         import lightgbm as lgb
@@ -120,6 +123,7 @@ def model(view):
         "proxy": out / "origination_proxy_scorecard.pkl", "challenger": out / "challenger_lgbm.txt",
         "importance": out / "challenger_importance.csv", "master_scale": out / "master_scale.csv",
         "calibration": out / "calibration.json",
+        "monotone": out / "challenger_monotone_constraints.json",
     }  # fmt: skip
     external = scored.drop(index=a.index).drop(columns=["partition", "TARGET"])
     scored = scored.loc[a.index]
@@ -148,6 +152,8 @@ def model(view):
     scale_table(bounds).to_csv(files["master_scale"], index=False)
     calib = {"champion": cal_ch.__dict__, "challenger": cal_cl.__dict__}
     files["calibration"].write_text(json.dumps(calib, indent=2))
+    files["monotone"].write_text(json.dumps({"enabled": bool(signs), "method": m.lightgbm_fit.monotone_method,
+                                             "signs": signs or {}}, indent=2))  # fmt: skip
 
     tr = scored.loc[train_ids]
     return {
@@ -170,6 +176,13 @@ def model(view):
                 "type": "LightGBM gradient boosting",
                 "n_features": len(cands),
                 "n_trees": n_trees,
+                "monotone": {
+                    "enabled": bool(signs),
+                    "method": m.lightgbm_fit.monotone_method,
+                    "increasing": sum(v == 1 for v in (signs or {}).values()),
+                    "decreasing": sum(v == -1 for v in (signs or {}).values()),
+                    "free": sum(v == 0 for v in (signs or {}).values()),
+                },
                 "calibration": cal_cl.reason,
                 "calibration_applied": cal_cl.applied,
                 "train_gini": round(gini(tr["TARGET"], tr["pd_challenger"]), 4),

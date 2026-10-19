@@ -28,6 +28,7 @@ from acr.core.grounding import check
         "split",
         "selection",
         "model",
+        "explain",
         "validation",
         "ecl",
         "documents",

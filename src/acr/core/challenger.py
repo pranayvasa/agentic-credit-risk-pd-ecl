@@ -21,14 +21,49 @@ def prepare(X: pd.DataFrame, categorical: list[str]) -> pd.DataFrame:
     return X
 
 
+def monotone_signs(bp, features: list[str], categorical: list[str]) -> dict[str, int]:
+    """Direction each feature may move PD, from its train-only WoE binning trend.
+
+    +1: higher value can only raise PD; -1: can only lower it; 0: unconstrained (categorical,
+    single-bin, or a non-monotone event-rate pattern). Missing and special bins are ignored."""
+    signs = {}
+    for f in features:
+        if f in categorical:
+            signs[f] = 0
+            continue
+        bt = bp.get_binned_variable(f).binning_table.build().drop(index="Totals")
+        bt = bt[(bt["Count"] > 0) & ~bt["Bin"].astype(str).isin(["Special", "Missing"])]
+        er = bt["Event rate"].to_numpy()
+        if len(er) < 2:
+            signs[f] = 0
+        elif np.all(np.diff(er) >= 0):
+            signs[f] = 1
+        elif np.all(np.diff(er) <= 0):
+            signs[f] = -1
+        else:
+            signs[f] = 0
+    return signs
+
+
+def constrained(
+    params: dict, columns: list[str], signs: dict[str, int] | None, method: str
+) -> dict:
+    if not signs:
+        return params
+    return {**params, "monotone_constraints": [signs.get(c, 0) for c in columns],
+            "monotone_constraints_method": method}  # fmt: skip
+
+
 def _params(params: dict, seed: int) -> dict:
     return {**params, "random_state": seed, "deterministic": True, "force_row_wise": True,
             "n_jobs": 4, "verbose": -1}  # fmt: skip
 
 
 def fit_challenger(X: pd.DataFrame, y: pd.Series, categorical: list[str], params: dict,
-                   fit_cfg: LGBMFitCfg, seed: int) -> lgb.LGBMClassifier:  # fmt: skip
+                   fit_cfg: LGBMFitCfg, seed: int,
+                   signs: dict[str, int] | None = None) -> lgb.LGBMClassifier:  # fmt: skip
     X = prepare(X, categorical)
+    params = constrained(params, list(X.columns), signs, fit_cfg.monotone_method)
     Xa, Xv, ya, yv = train_test_split(X, y, test_size=fit_cfg.validation_frac, stratify=y,
                                       random_state=seed)  # fmt: skip
     probe = lgb.LGBMClassifier(**_params(params, seed))

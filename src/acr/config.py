@@ -101,6 +101,13 @@ class MasterScaleCfg(_Strict):
 class LGBMFitCfg(_Strict):
     validation_frac: float
     early_stopping_rounds: int
+    monotone: bool = False
+    monotone_method: Literal["basic", "intermediate", "advanced"] = "intermediate"
+
+
+class ExplainCfg(_Strict):
+    reason_codes: int = Field(ge=1, le=10)
+    stability_top_n: int = Field(ge=3, le=30)
 
 
 class CalibrationCfg(_Strict):
@@ -136,6 +143,7 @@ class BaseCfg(_Strict):
     sample: SampleCfg
     features: FeatureCfg
     model: ModelCfg
+    explain: ExplainCfg
 
 
 class GateSet(_Strict):
@@ -162,6 +170,8 @@ class ValidationCfg(_Strict):
     grade_share_min: float
     grade_share_max: float
     bootstrap_n: int
+    shap_top_overlap_min: float = 0.70
+    shap_spearman_min: float = 0.80
     stress_young_weights: list[float]
 
 

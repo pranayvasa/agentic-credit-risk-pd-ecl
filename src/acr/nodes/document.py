@@ -49,6 +49,7 @@ def _to_pdf(md_path: Path) -> str | None:
         "split",
         "selection",
         "model",
+        "explain",
         "validation",
         "ecl",
         "critic_reviews",

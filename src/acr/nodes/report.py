@@ -17,6 +17,7 @@ SUMMARY_KEYS = (
     "legs",
     "selection",
     "model",
+    "explain",
     "validation",
     "ecl",
     "critic_reviews",

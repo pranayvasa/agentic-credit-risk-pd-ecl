@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 ORDER = ["setup", "ingest_dq", "split", "leg_application", "leg_bureau", "leg_behavioural",
-         "leg_previous", "select", "model", "validate", "ecl", "critic", "run_extra_analyses",
+         "leg_previous", "select", "model", "explain", "validate", "ecl", "critic", "run_extra_analyses",
          "document", "grounding_check", "assemble_report", "halt"]  # fmt: skip
 
 

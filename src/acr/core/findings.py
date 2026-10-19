@@ -285,6 +285,83 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             "Obtain documentation of the external scores. Without them OOT Gini falls from about 0.50 to 0.40 and the gate fails (docs/sensitivity_ext_source.md).",
         )
 
+    ex = m.get("explain")
+    if ex:
+        mono = ex["monotone"]
+        if mono["enabled"] and mono["violating_rows"] > 0:
+            add(
+                "Explainability",
+                "high",
+                "Monotonic constraints violated",
+                f"{mono['violating_rows']} sweep rows moved PD against the allowed direction across "
+                f"{mono['features_tested']} constrained features.",
+                "Investigate the constraint set-up before use.",
+            )
+        elif mono["enabled"]:
+            add(
+                "Explainability",
+                "info",
+                "Monotonic constraints verified",
+                f"Sweeping each of {mono['features_tested']} constrained features across its range for "
+                f"{mono['rows_swept']} OOT applicants moved PD only in the allowed direction.",
+            )
+        if ex["additivity_max_error"] > 1e-6:
+            add(
+                "Explainability",
+                "high",
+                "SHAP values do not reconcile to model scores",
+                f"Maximum gap {ex['additivity_max_error']:.2e} in log-odds.",
+                "Recompute explanations.",
+            )
+        st = ex["stability"]
+        lo_overlap = min(x["top_overlap"] for x in st.values())
+        lo_rho = min(x["spearman"] for x in st.values())
+        if any(x["spearman"] != x["spearman"] for x in st.values()):  # NaN: nothing to explain
+            add(
+                "Explainability",
+                "medium",
+                "Challenger explanations could not be assessed",
+                "Mean absolute SHAP is zero in at least one sample: the challenger made no splits, "
+                "usually because min_child_samples exceeds the data available.",
+                "Review the challenger's parameters for this data size.",
+            )
+        elif lo_overlap < v.shap_top_overlap_min or lo_rho < v.shap_spearman_min:
+            add(
+                "Explainability",
+                "medium",
+                "Challenger explanations are unstable",
+                f"Lowest top-{st['test_vs_oot']['top_n']} driver overlap {lo_overlap:.0%} (minimum "
+                f"{v.shap_top_overlap_min:.0%}); lowest rank correlation {lo_rho:.3f} (minimum "
+                f"{v.shap_spearman_min}).",
+                "Do not rely on reason codes until stable.",
+            )
+        else:
+            add(
+                "Explainability",
+                "info",
+                "Challenger explanations are stable",
+                f"Top-{st['test_vs_oot']['top_n']} SHAP drivers overlap at least {lo_overlap:.0%} across OOT "
+                f"halves, test vs OOT and train vs OOT; rank correlation at least {lo_rho:.3f}.",
+            )
+        if ex["external_score_share"] > v.external_score_share_max:
+            add(
+                "Explainability",
+                "medium",
+                "Challenger relies heavily on external scores",
+                f"EXT_SOURCE features carry {ex['external_score_share']:.0%} of mean absolute SHAP "
+                f"(threshold {v.external_score_share_max:.0%}).",
+                "As for the champion: document the scores.",
+            )
+        for g, r in ex["gender_pd_to_dr"].items():
+            if abs(r - 1) > v.calibration_ratio_tol:
+                add(
+                    "Fairness",
+                    "medium",
+                    f"Challenger calibration off for gender = {g}",
+                    f"Mean PD / default rate {r:.3f} (tolerance ±{v.calibration_ratio_tol:.0%}).",
+                    "Investigate proxies; gender is not a model input.",
+                )
+
     add(
         "Conceptual soundness",
         "medium",

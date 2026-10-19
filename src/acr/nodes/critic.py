@@ -66,6 +66,7 @@ def _parse(text: str) -> tuple[dict, list[dict], list[str]]:
         "split",
         "selection",
         "model",
+        "explain",
         "validation",
         "ecl",
         "extra_analyses",

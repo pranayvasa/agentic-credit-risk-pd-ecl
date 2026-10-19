@@ -38,6 +38,7 @@ graph TD;
 	leg_previous(leg_previous)
 	select(select)
 	model(model)
+	explain(explain)
 	validate(validate)
 	ecl(ecl)
 	critic(critic)
@@ -52,6 +53,7 @@ graph TD;
 	critic -.-> run_extra_analyses;
 	document --> grounding_check;
 	ecl --> critic;
+	explain --> validate;
 	grounding_check --> assemble_report;
 	ingest_dq -.-> halt;
 	ingest_dq -.-> split;
@@ -59,7 +61,7 @@ graph TD;
 	leg_behavioural --> select;
 	leg_bureau --> select;
 	leg_previous --> select;
-	model --> validate;
+	model --> explain;
 	run_extra_analyses --> critic;
 	select --> model;
 	setup --> ingest_dq;
@@ -93,14 +95,15 @@ Every node is wrapped by a `@node(reads=..., writes=...)` contract (`src/acr/aud
 | 6 | `leg_previous` | Earlier applications to Home Credit. Aggregates previous_application to SK_ID_CURR; leg-level quality checks; writes a feature table and feature dictionary. | `config`, `split`, `dq` | `legs` | no | A critical leg quality failure (e.g. duplicate IDs) raises and stops the run. |
 | 7 | `select` | Join the four legs; select scorecard features on train only by missingness, IV, train-vs-test CSI, correlation, VIF, a size cap and coefficient sign/significance; log every exclusion with a reason. | `config`, `split`, `legs` | `selection` | no | Exception propagates; run stops and the audit trail records the error. |
 | 8 | `model` | Fit the champion WoE logistic scorecard and LightGBM challenger on train; decide calibration from out-of-fold train predictions; map PD to the master scale; fit the application-only origination-proxy scorecard for ECL staging. | `config`, `split`, `selection` | `model` | no | Exception propagates; run stops and the audit trail records the error. |
-| 9 | `validate` | Independent second-line validation over scored outputs: Gini/AUC/KS by partition, score PSI and feature CSI, calibration (HL, ECE, slope, grade-level binomial tests), rank-ordering, segments, champion vs challenger with bootstrap CI; structured findings; performance and stability gates. Read-only: artefact checksums verified before and after. | `config`, `sample_frac`, `split`, `model`, `selection` | `validation`, `gate_log` | no | A red finding with gate enforcement on routes to the halt node with a halt report. |
-| 10 | `ecl` | Illustrative RBI ECL on the OOT book: stage allocation with audited triggers, 12-month and lifetime PD (constant hazard and bureau DPD Markov chain), amortising EAD, EIR discounting, weighted macro scenarios, LGD backstop and sensitivity, RBI stage floors. | `config`, `split`, `dq`, `selection`, `model` | `ecl` | no | Exception propagates; run stops and the audit trail records the error. |
-| 11 | `critic` | LLM second-line challenger: reviews validation and ECL summaries, may request whitelisted deterministic analyses. Cannot change the model. | `config`, `config_hash`, `sample_frac`, `dq`, `split`, `selection`, `model`, `validation`, `ecl`, `extra_analyses`, `critic_iteration` | `critic_reviews`, `critic_requests`, `critic_iteration`, `llm_calls` | yes | If no LLM is available the node records a skip and the pipeline continues. |
-| 12 | `run_extra_analyses` | Run the critic's whitelisted, deterministic analysis requests over saved outputs; never touches model artefacts. | `config`, `critic_requests`, `critic_iteration`, `model`, `ecl`, `selection` | `extra_analyses`, `critic_requests` | no | Exception propagates; run stops and the audit trail records the error. |
-| 13 | `document` | Draft the Model Development Document, Independent Validation Report, Ongoing Monitoring Plan and ECL Methodology Note section by section: LLM prose from curated facts, tables rendered by code. | `config`, `config_hash`, `sample_frac`, `dq`, `split`, `selection`, `model`, `validation`, `ecl`, `critic_reviews`, `extra_analyses` | `documents`, `llm_calls` | yes | If no LLM is available the node records a skip and the pipeline continues. |
-| 14 | `grounding_check` | Extract every number from the generated documents and verify it against the run's facts, extra analyses and config within rounding; flag anything unverified. | `config`, `config_hash`, `sample_frac`, `dq`, `split`, `selection`, `model`, `validation`, `ecl`, `documents`, `extra_analyses` | `grounding` | no | Exception propagates; run stops and the audit trail records the error. |
-| 15 | `assemble_report` | Write run_summary.json and print a console summary. | `run_id`, `config_hash`, `sample_frac`, `llm_mode`, `dq`, `split`, `legs`, `selection`, `model`, `validation`, `ecl`, `critic_reviews`, `extra_analyses`, `documents`, `grounding`, `gate_log`, `llm_calls` | `report` | no | Exception propagates; run stops and the audit trail records the error. |
-| 16 | `halt` | Stop the run after a red gate; write halt_report.md explaining why, and run_summary.json with everything computed before the halt. | `run_id`, `config_hash`, `sample_frac`, `llm_mode`, `dq`, `split`, `legs`, `selection`, `model`, `validation`, `ecl`, `critic_reviews`, `extra_analyses`, `documents`, `grounding`, `gate_log`, `llm_calls` | `halted`, `halt_reason`, `report` | no | Exception propagates; run stops and the audit trail records the error. |
+| 9 | `explain` | Exact TreeSHAP explanations of the LightGBM challenger: global and per-leg importance, top-4 reason codes for every OOT applicant, stability of the top drivers, and a direct test that the monotonic constraints hold. Reads the saved model; never refits. | `config`, `split`, `selection`, `model` | `explain` | no | Exception propagates; run stops and the audit trail records the error. |
+| 10 | `validate` | Independent second-line validation over scored outputs: Gini/AUC/KS by partition, score PSI and feature CSI, calibration (HL, ECE, slope, grade-level binomial tests), rank-ordering, segments, champion vs challenger with bootstrap CI; structured findings; performance and stability gates. Read-only: artefact checksums verified before and after. | `config`, `sample_frac`, `split`, `model`, `selection`, `explain` | `validation`, `gate_log` | no | A red finding with gate enforcement on routes to the halt node with a halt report. |
+| 11 | `ecl` | Illustrative RBI ECL on the OOT book: stage allocation with audited triggers, 12-month and lifetime PD (constant hazard and bureau DPD Markov chain), amortising EAD, EIR discounting, weighted macro scenarios, LGD backstop and sensitivity, RBI stage floors. | `config`, `split`, `dq`, `selection`, `model` | `ecl` | no | Exception propagates; run stops and the audit trail records the error. |
+| 12 | `critic` | LLM second-line challenger: reviews validation and ECL summaries, may request whitelisted deterministic analyses. Cannot change the model. | `config`, `config_hash`, `sample_frac`, `dq`, `split`, `selection`, `model`, `explain`, `validation`, `ecl`, `extra_analyses`, `critic_iteration` | `critic_reviews`, `critic_requests`, `critic_iteration`, `llm_calls` | yes | If no LLM is available the node records a skip and the pipeline continues. |
+| 13 | `run_extra_analyses` | Run the critic's whitelisted, deterministic analysis requests over saved outputs; never touches model artefacts. | `config`, `critic_requests`, `critic_iteration`, `model`, `ecl`, `selection` | `extra_analyses`, `critic_requests` | no | Exception propagates; run stops and the audit trail records the error. |
+| 14 | `document` | Draft the Model Development Document, Independent Validation Report, Ongoing Monitoring Plan and ECL Methodology Note section by section: LLM prose from curated facts, tables rendered by code. | `config`, `config_hash`, `sample_frac`, `dq`, `split`, `selection`, `model`, `explain`, `validation`, `ecl`, `critic_reviews`, `extra_analyses` | `documents`, `llm_calls` | yes | If no LLM is available the node records a skip and the pipeline continues. |
+| 15 | `grounding_check` | Extract every number from the generated documents and verify it against the run's facts, extra analyses and config within rounding; flag anything unverified. | `config`, `config_hash`, `sample_frac`, `dq`, `split`, `selection`, `model`, `explain`, `validation`, `ecl`, `documents`, `extra_analyses` | `grounding` | no | Exception propagates; run stops and the audit trail records the error. |
+| 16 | `assemble_report` | Write run_summary.json and print a console summary. | `run_id`, `config_hash`, `sample_frac`, `llm_mode`, `dq`, `split`, `legs`, `selection`, `model`, `explain`, `validation`, `ecl`, `critic_reviews`, `extra_analyses`, `documents`, `grounding`, `gate_log`, `llm_calls` | `report` | no | Exception propagates; run stops and the audit trail records the error. |
+| 17 | `halt` | Stop the run after a red gate; write halt_report.md explaining why, and run_summary.json with everything computed before the halt. | `run_id`, `config_hash`, `sample_frac`, `llm_mode`, `dq`, `split`, `legs`, `selection`, `model`, `explain`, `validation`, `ecl`, `critic_reviews`, `extra_analyses`, `documents`, `grounding`, `gate_log`, `llm_calls` | `halted`, `halt_reason`, `report` | no | Exception propagates; run stops and the audit trail records the error. |
 <!-- END:nodes -->
 
 **Gates.** After `ingest_dq`, any failed critical check (missing table or column, duplicate IDs, non-binary target) routes to `halt`. After `validate`, any red finding routes to `halt` on full runs and only warns on `--sample` runs. Red findings are a champion test or OOT Gini below 0.45, score PSI at or above 0.25, or a model-artefact checksum mismatch. `halt` writes `halt_report.md` with the red findings, plus `run_summary.json`.
@@ -186,7 +189,7 @@ After ECL, the `critic` node acts as a skeptical second-line validator. It recei
 All numbers below are filled in by `scripts/fill_readme.py` from a single run's `run_summary.json`.
 
 <!-- BEGIN:results -->
-From run `20261019T041619Z_full_21f3ba7a1ecd` (full population, dry-run LLM mode, config hash `21f3ba7a1ecd`).
+From run `20261019T052034Z_full_975e6130602a` (full population, dry-run LLM mode, config hash `975e6130602a`).
 
 **Discrimination and calibration** (Gini = 2 × AUC − 1)
 
@@ -195,14 +198,14 @@ From run `20261019T041619Z_full_21f3ba7a1ecd` (full population, dry-run LLM mode
 | champion | train | 0.5041 | 0.7521 | 0.3782 | 8.07% | 8.07% |
 | champion | test | 0.4896 | 0.7448 | 0.3676 | 8.06% | 8.07% |
 | champion | oot | 0.5008 | 0.7504 | 0.3769 | 8.04% | 8.07% |
-| challenger | train | 0.6791 | 0.8396 | 0.5203 | 8.07% | 8.07% |
-| challenger | test | 0.5704 | 0.7852 | 0.4297 | 8.06% | 8.07% |
-| challenger | oot | 0.5761 | 0.7881 | 0.4362 | 8.07% | 8.07% |
+| challenger | train | 0.6120 | 0.8060 | 0.4623 | 8.07% | 8.07% |
+| challenger | test | 0.5520 | 0.7760 | 0.4115 | 8.07% | 8.07% |
+| challenger | oot | 0.5602 | 0.7801 | 0.4263 | 8.08% | 8.07% |
 
 | Measure | Value |
 |---|---|
 | Champion OOT decile ECE / calibration slope | 0.0023 / 1.003 |
-| Challenger − champion OOT Gini (95% bootstrap CI) | 0.0753 (0.0688 to 0.0817) |
+| Challenger − champion OOT Gini (95% bootstrap CI) | 0.0594 (0.0524 to 0.0649) |
 | Score PSI train→test / train→OOT | 0.0001 / 0.0001 |
 | Largest selected-feature CSI | 0.0850 |
 | Stress PSI ladder (under-30s ×3 / ×10 / ×50) | 0.0206 / 0.1319 / 0.3391 |
@@ -219,10 +222,10 @@ From run `20261019T041619Z_full_21f3ba7a1ecd` (full population, dry-run LLM mode
 
 | Control | Result |
 |---|---|
-| Validation gate | continue (0 red, 0 high, 6 medium, 7 low, 1 info) |
+| Validation gate | continue (0 red, 0 high, 5 medium, 7 low, 3 info) |
 | Critic loop | 2 reviews, 3 whitelisted analyses run |
-| Grounding check | pass: 478 numbers verified, 0 unverified |
-| LLM calls (dry-run) | 29 calls, ~136,055 input tokens |
+| Grounding check | pass: 518 numbers verified, 0 unverified |
+| LLM calls (dry-run) | 30 calls, ~156,446 input tokens |
 | ECL QC checks | 5 of 5 pass |
 <!-- END:results -->
 
@@ -244,19 +247,20 @@ Generated by deterministic rules, with the thresholds stated in each finding. Th
 | ID | Severity | Area | Finding |
 |---|---|---|---|
 | V01 | medium | Performance | Champion test Gini close to gate |
-| V02 | medium | Benchmarking | Challenger overfits the training data |
-| V03 | medium | Benchmarking | Challenger materially outperforms champion |
-| V04 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
-| V05 | info | Stability | External population (application_test) score distribution stable |
-| V06 | low | Calibration | Amber calibration in some grades (OOT) |
-| V07 | low | Master scale | Sparsely populated grades |
-| V08 | low | Segments | Segment calibration off in contract_type = Revolving loans |
-| V09 | low | Segments | Segment calibration off in income_type = Commercial associate |
-| V10 | low | Segments | Segment calibration off in income_type = Pensioner |
-| V11 | low | Segments | Segment calibration off in income_type = State servant |
-| V12 | low | Segments | Segment calibration off in age_band = <30 |
-| V13 | medium | Conceptual soundness | Heavy reliance on undisclosed external scores |
-| V14 | medium | Conceptual soundness | Target is not the regulatory default definition |
+| V02 | medium | Benchmarking | Challenger materially outperforms champion |
+| V03 | medium | Stability | Stability testing is not temporal (pseudo-OOT) |
+| V04 | info | Stability | External population (application_test) score distribution stable |
+| V05 | low | Calibration | Amber calibration in some grades (OOT) |
+| V06 | low | Master scale | Sparsely populated grades |
+| V07 | low | Segments | Segment calibration off in contract_type = Revolving loans |
+| V08 | low | Segments | Segment calibration off in income_type = Commercial associate |
+| V09 | low | Segments | Segment calibration off in income_type = Pensioner |
+| V10 | low | Segments | Segment calibration off in income_type = State servant |
+| V11 | low | Segments | Segment calibration off in age_band = <30 |
+| V12 | medium | Conceptual soundness | Heavy reliance on undisclosed external scores |
+| V13 | info | Explainability | Monotonic constraints verified |
+| V14 | info | Explainability | Challenger explanations are stable |
+| V15 | medium | Conceptual soundness | Target is not the regulatory default definition |
 <!-- END:findings -->
 
 ## Regulatory mapping

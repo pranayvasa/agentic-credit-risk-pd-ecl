@@ -218,8 +218,36 @@ def ecl_assumptions_table(f, ctx):
     return _md(["Assumption", "Value"], rows)
 
 
+def shap_table(f, ctx):
+    e = f["explain"]
+    t1 = _md(
+        ["Feature", "Leg", "Share of mean abs SHAP", "Constraint"],
+        [[x["feature"], x["leg"], _pct(x["share"], 1), x["constraint"]] for x in e["top_features"]],
+    )
+    t2 = _md(
+        ["Leg", "Share of mean abs SHAP"], [[k, _pct(v, 1)] for k, v in e["leg_shares"].items()]
+    )
+    return t1 + "\n\n" + t2
+
+
+def explain_checks_table(f, ctx):
+    e = f["explain"]
+    st, mono = e["stability"], e["monotone"]
+    rows = [["Applicants explained (OOT)", f"{e['applicants_explained']:,}"],
+            ["SHAP additivity, max error (log-odds)", f"{e['additivity_max_error']:.1e}"],
+            ["Monotonic constraints: features tested / violating rows",
+             f"{mono['features_tested']} / {mono['violating_rows']}"]]  # fmt: skip
+    rows += [[f"Top-{x['top_n']} driver overlap / rank correlation, {k.replace('_', ' ')}",
+              f"{x['top_overlap']:.0%} / {x['spearman']:.3f}"] for k, x in st.items()]  # fmt: skip
+    rows += [
+        [f"Challenger mean PD / default rate, gender {g}", f"{r:.3f}"]
+        for g, r in e["gender_pd_to_dr"].items()
+    ]
+    return _md(["Check", "Result"], rows)
+
+
 TABLES = {fn.__name__: fn for fn in (
     data_table, split_table, selection_funnel_table, selected_features_table, performance_table,
     calibration_table, grade_table, stability_table, comparison_table, findings_table,
     findings_detail, critic_table, monitoring_table, staging_table, lifetime_table, lgd_table,
-    scenario_table, ecl_stage_table, ecl_assumptions_table)}  # fmt: skip
+    scenario_table, ecl_stage_table, ecl_assumptions_table, shap_table, explain_checks_table)}  # fmt: skip

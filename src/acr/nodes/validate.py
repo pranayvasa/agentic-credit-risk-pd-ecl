@@ -60,7 +60,7 @@ def _segment_frame(features: pd.DataFrame) -> pd.DataFrame:
     "score PSI and feature CSI, calibration (HL, ECE, slope, grade-level binomial tests), "
     "rank-ordering, segments, champion vs challenger with bootstrap CI; structured findings; "
     "performance and stability gates. Read-only: artefact checksums verified before and after.",
-    reads=["config", "sample_frac", "split", "model", "selection"],
+    reads=["config", "sample_frac", "split", "model", "selection", "explain"],
     writes=["validation", "gate_log"],
     on_failure="A red finding with gate enforcement on routes to the halt node with a halt report.",
 )
@@ -125,6 +125,10 @@ def validate(view):
     seg = V.segments(oot, _segment_frame(features), "pd_champion")
     m["comparison"] = V.bootstrap_gini_diff(oot["TARGET"], oot["pd_champion"], oot["pd_challenger"],
                                             v.bootstrap_n, c.base.seed)  # fmt: skip
+    ex = view.get("explain")
+    if ex:
+        m["explain"] = {k: ex[k] for k in ("additivity_max_error", "external_score_share", "stability",
+                                           "monotone", "gender_pd_to_dr", "applicants_explained")}  # fmt: skip
     m["external_score_share"] = V.points_range_share(points, [f for f in EXTERNAL if f in selected])
 
     out = artefact_dir(view, "validation")
