@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping
 
+import numpy as np
 import pandas as pd
 
 from acr.core.io import read
@@ -17,6 +18,9 @@ def run_leg(view: Mapping, leg: str, build: Callable) -> dict:
     t0 = time.perf_counter()
     paths = {k: v["path"] for k, v in view["dq"]["tables"].items()}
     ids = read(view["split"]["assignment_path"], [ID])[ID].to_numpy()
+    ext = view["split"].get("external")
+    if ext:  # unlabelled applicants get features too, so the model can score them
+        ids = np.concatenate([ids, read(ext["path"], [ID])[ID].to_numpy()])
     res: LegResult = build(paths, ids)
     q = leg_quality(res)
     if q["status"] == "fail":

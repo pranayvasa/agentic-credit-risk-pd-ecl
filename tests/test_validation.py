@@ -19,16 +19,18 @@ CFG = load_config()
 
 
 def _metrics(test_gini=0.50, oot_gini=0.50, psi=0.001, integrity=True):
-    perf = {"n": 1000, "gini": 0.52}
+    perf = {"n": 1000, "gini": 0.52, "auc": 0.76}
     return {
         "integrity": {"ok": integrity, "mismatches": [] if integrity else ["scored"]},
         "champion": {
-            "performance": {"train": {**perf, "gini": 0.52}, "test": {**perf, "gini": test_gini},
-                            "oot": {**perf, "gini": oot_gini}},
+            "performance": {"train": {**perf, "gini": 0.52},
+                            "test": {**perf, "gini": test_gini, "auc": (test_gini + 1) / 2},
+                            "oot": {**perf, "gini": oot_gini, "auc": (oot_gini + 1) / 2}},
             "calibration": {"oot": {"hl_p_value": 0.5, "hl_stat": 5.0, "ece": 0.002, "slope": 1.0}},
             "rank_breaks_grade_oot": 0, "rank_breaks_decile_oot": 0,
         },
-        "challenger": {"performance": {"train": {"gini": 0.60}, "oot": {"gini": 0.56}}},
+        "challenger": {"performance": {"train": {"gini": 0.60, "auc": 0.80},
+                                       "oot": {"gini": 0.56, "auc": 0.78}}},
         "comparison": {"diff": 0.01, "ci_low": -0.01, "ci_high": 0.03},
         "stability": {
             "score_psi": {"train_vs_test": psi, "train_vs_oot": psi},
@@ -172,3 +174,42 @@ def test_stress_ladder_reported_with_bands():
     assert "3x: 0.0200 (green)" in f.detail
     assert "10x: 0.1300 (amber)" in f.detail
     assert "50x: 0.3400 (red)" in f.detail
+
+
+def test_external_population_finding_bands():
+    base = _metrics()
+    for psi_ext, sev in ((0.01, "info"), (0.15, "medium"), (0.30, "red")):
+        m = {**base, "stability": {**base["stability"], "external": {
+            "n": 5000, "score_psi": psi_ext, "challenger_pd_psi": psi_ext,
+            "mean_pd_champion": 0.08, "mean_pd_champion_train": 0.08}}}  # fmt: skip
+        f = [x for x in _findings(m) if x.title.startswith("External population")]
+        assert len(f) == 1 and f[0].severity == sev
+
+
+def test_findings_quote_auc_next_to_gini():
+    f = _findings(_metrics(test_gini=0.47))
+    close = [x for x in f if "close to gate" in x.title][0]
+    assert "Gini 0.4700 (AUC 0.7350)" in close.detail
+
+
+def test_external_applicants_scored_but_never_fitted(init_state):
+    """application_test rows get features and scores, are excluded from every labelled
+    partition, and feed the external PSI check."""
+    final = build_graph().invoke(init_state(sample_frac=None), {"recursion_limit": 60})
+    ext = pd.read_parquet(final["model"]["paths"]["scored_external"])
+    lab = pd.read_parquet(final["model"]["paths"]["scored"])
+    assert len(ext) == final["split"]["external"]["n"] > 0
+    assert not set(ext.index) & set(lab.index)
+    assert "TARGET" not in ext.columns
+    assert "external" in final["validation"]["metrics"]["stability"]
+    subs = final["model"]["external"]["kaggle_submissions"]
+    for path in subs.values():
+        sub = pd.read_csv(path)
+        assert list(sub.columns) == ["SK_ID_CURR", "TARGET"]
+        assert len(sub) == len(ext) and sub["TARGET"].between(0, 1).all()
+
+
+def test_sample_runs_do_not_export_partial_kaggle_submissions(init_state):
+    final = build_graph().invoke(init_state(sample_frac=0.5), {"recursion_limit": 60})
+    assert final["split"]["external"]["complete"] is False
+    assert final["model"]["external"]["kaggle_submissions"] == {}

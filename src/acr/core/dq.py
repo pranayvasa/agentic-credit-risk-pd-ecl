@@ -13,7 +13,14 @@ import pyarrow.parquet as pq
 
 from acr.config import DQCfg
 from acr.core.io import column_null_counts, read
-from acr.core.schema import BUREAU_STATUS_DOMAIN, DAYS_SENTINEL, ID, REQUIRED_COLUMNS, TARGET
+from acr.core.schema import (
+    BUREAU_STATUS_DOMAIN,
+    DAYS_SENTINEL,
+    ID,
+    OPTIONAL_TABLES,
+    REQUIRED_COLUMNS,
+    TARGET,
+)
 
 SEVERITY_ORDER = ["info", "low", "medium", "high", "critical"]
 
@@ -34,7 +41,8 @@ def run_checks(tables: dict[str, dict], cfg: DQCfg) -> list[Check]:
 
     for name, info in tables.items():
         present = info.get("path") is not None
-        checks.append(Check("table_present", name, "critical", present,
+        sev = "medium" if name in OPTIONAL_TABLES else "critical"
+        checks.append(Check("table_present", name, sev, present,
                             "loaded" if present else f"missing file {info.get('missing')}"))  # fmt: skip
     present = {n: i["path"] for n, i in tables.items() if i.get("path")}
 
@@ -61,6 +69,17 @@ def run_checks(tables: dict[str, dict], cfg: DQCfg) -> list[Check]:
                             f"{len(high)} column(s) over {cfg.high_missing_share:.0%} missing",
                             value=len(high), extra={"columns": high}))  # fmt: skip
         if name == "application":
+            continue
+        if name == "application_test":
+            ext = read(path, [ID])[ID]
+            checks.append(Check("id_unique", name, "high", ext.is_unique,
+                                f"{int(ext.duplicated().sum())} duplicate {ID}"))  # fmt: skip
+            overlap = int(ext.isin(app_ids).sum())
+            checks.append(Check("disjoint_from_train", name, "high", overlap == 0,
+                                f"{overlap} {ID} also appear in application_train"))  # fmt: skip
+            checks.append(Check("unlabelled", name, "info", True,
+                                f"{len(ext)} applicants with no TARGET: used for an external "
+                                "score-PSI check and a Kaggle submission only"))  # fmt: skip
             continue
         df = read(path, REQUIRED_COLUMNS[name])
         dup = int(df.duplicated().sum())

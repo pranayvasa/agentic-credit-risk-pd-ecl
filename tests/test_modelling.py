@@ -117,6 +117,9 @@ def test_points_table_reproduces_scores(base_run):
         sc = pickle.load(f)
     pts = pd.read_csv(paths["points"])
     feats = pd.read_parquet(base_run["selection"]["paths"]["features_all"])
+    feats = feats.loc[
+        _scored(base_run).index
+    ]  # labelled rows (features also cover application_test)
     with open(base_run["selection"]["paths"]["binning"], "rb") as f:
         bp = pickle.load(f)
     with open(base_run["selection"]["paths"]["meta"]) as f:

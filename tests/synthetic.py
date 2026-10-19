@@ -11,6 +11,7 @@ from acr.core.schema import APP_CATEGORICAL, APP_NUMERIC, REQUIRED_COLUMNS
 
 FILES = {
     "application": "application_train.csv",
+    "application_test": "application_test.csv",
     "bureau": "bureau.csv",
     "bureau_balance": "bureau_balance.csv",
     "installments": "installments_payments.csv",
@@ -113,8 +114,14 @@ def make_tables(n: int = 3000, seed: int = 0) -> dict[str, pd.DataFrame]:
         "AMT_PAYMENT_CURRENT": rng.uniform(0, 5e3, 3 * k), "AMT_INST_MIN_REGULARITY": 2000.0,
         "SK_DPD_DEF": rng.choice([0, 0, 10], 3 * k),
     })  # fmt: skip
-    tables = {"application": app, "bureau": bureau, "bureau_balance": bb, "installments": inst,
-              "pos_cash": pos, "credit_card": cc, "previous": previous}  # fmt: skip
+    # The last ~15% of applicants form an unlabelled application_test table, as in Kaggle.
+    # Their child-table records stay, so ~15% of child rows are "orphans" to application_train.
+    is_test = app["SK_ID_CURR"] >= ids[int(n * 0.85)]
+    app_test = app.loc[is_test].drop(columns=["TARGET"]).reset_index(drop=True)
+    app = app.loc[~is_test].reset_index(drop=True)
+    tables = {"application": app, "application_test": app_test, "bureau": bureau,
+              "bureau_balance": bb, "installments": inst, "pos_cash": pos, "credit_card": cc,
+              "previous": previous}  # fmt: skip
     for name, df in tables.items():
         missing = set(REQUIRED_COLUMNS[name]) - set(df.columns)
         assert not missing, (name, missing)

@@ -61,8 +61,13 @@ PROTECTED_DEFS = {
 
 
 def build(paths: dict[str, str], ids: np.ndarray) -> LegResult:
-    app = read(paths["application"], [ID, *APP_NUMERIC, *APP_CATEGORICAL, *APP_PROTECTED], ids)
-    app = app.set_index(ID)
+    cols = [ID, *APP_NUMERIC, *APP_CATEGORICAL, *APP_PROTECTED]
+    # Labelled applicants (application_train) plus, when present, the unlabelled Kaggle
+    # scoring set (application_test). Neither read includes the default flag.
+    frames = [read(paths["application"], cols, ids)]
+    if paths.get("application_test"):
+        frames.append(read(paths["application_test"], cols, ids))
+    app = pd.concat([f for f in frames if len(f)], ignore_index=True).set_index(ID)
     fd = FeatureDict("application")
     f = pd.DataFrame(index=app.index)
 

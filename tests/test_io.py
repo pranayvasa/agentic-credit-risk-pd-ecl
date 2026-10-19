@@ -41,10 +41,13 @@ def test_cache_reused_then_rebuilt_on_change(tmp_path):
 
 
 def test_read_filters_ids_and_columns(tmp_path):
-    raw = write_raw(tmp_path / "raw", make_tables(n=300))
+    tables = make_tables(n=300)
+    raw = write_raw(tmp_path / "raw", tables)
     info = ensure_parquet(raw, tmp_path / "interim", {"application": "application_train.csv"})
     df = read(info["application"]["path"], ["SK_ID_CURR", "TARGET"], ids=[100001, 100005])
     assert list(df.columns) == ["SK_ID_CURR", "TARGET"]
     assert sorted(df["SK_ID_CURR"]) == [100001, 100005]
-    assert pq.ParquetFile(info["application"]["path"]).metadata.num_rows == 300
+    assert pq.ParquetFile(info["application"]["path"]).metadata.num_rows == len(
+        tables["application"]
+    )
     assert isinstance(df, pd.DataFrame)

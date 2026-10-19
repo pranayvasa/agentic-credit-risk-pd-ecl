@@ -78,6 +78,9 @@ def test_split_and_leg_artefacts_persisted(init_state):
         assert Path(s["id_paths"][p]).exists()
     assert s["pseudo_oot"] is True
     ids = set(pd.read_parquet(s["assignment_path"])["SK_ID_CURR"])
+    ext = set(pd.read_parquet(s["external"]["path"])["SK_ID_CURR"])
+    assert not ids & ext
+    ids |= ext  # legs build features for unlabelled applicants too, so the model can score them
     for leg, info in final["legs"].items():
         f = pd.read_parquet(info["features_path"])
         d = pd.read_csv(info["dictionary_path"])

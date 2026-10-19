@@ -17,6 +17,9 @@ data:
   target_col: TARGET
   tables:
     application: application_train.csv
+    # Kaggle scoring set: no TARGET. Used only for an external score-PSI check and a Kaggle
+    # submission export. Optional: if the file is missing, those steps are skipped.
+    application_test: application_test.csv
     bureau: bureau.csv
     bureau_balance: bureau_balance.csv
     installments: installments_payments.csv

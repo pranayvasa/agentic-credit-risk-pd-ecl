@@ -51,8 +51,9 @@ def model(view):
         bp = pickle.load(f)
     features = pd.read_parquet(sp["features_all"])
     dictionary = pd.read_csv(sp["dictionary"]).set_index("name")
+    # Labelled rows come from the split assignment. Any other rows in `features` are the
+    # unlabelled application_test applicants: scored, never fitted on.
     a = pd.read_parquet(view["split"]["assignment_path"]).set_index("SK_ID_CURR")
-    a = a.loc[features.index]
     train_ids = a.index[a["partition"] == "train"]
     y = a["TARGET"]
     ytr = y.loc[train_ids]
@@ -102,7 +103,8 @@ def model(view):
 
     bounds = m.master_scale.pd_upper_bounds
     scored = pd.DataFrame({
-        "partition": a["partition"].astype(str), "TARGET": y,
+        "partition": a["partition"].astype(str).reindex(features.index),
+        "TARGET": y.reindex(features.index),
         "score": sc.score(W), "pd_champion_raw": pd_ch_raw, "pd_champion": pd_ch,
         "grade_champion": assign_grade(pd_ch, bounds),
         "pd_challenger": pd_cl, "grade_challenger": assign_grade(pd_cl, bounds),
@@ -118,7 +120,22 @@ def model(view):
         "importance": out / "challenger_importance.csv", "master_scale": out / "master_scale.csv",
         "calibration": out / "calibration.json",
     }  # fmt: skip
+    external = scored.drop(index=a.index).drop(columns=["partition", "TARGET"])
+    scored = scored.loc[a.index]
     scored.to_parquet(files["scored"])
+    ext_info = view["split"].get("external")
+    if len(external):
+        files["scored_external"] = out / "scored_external.parquet"
+        external.to_parquet(files["scored_external"])
+    kaggle = {}
+    if ext_info and ext_info["complete"]:
+        # Kaggle needs every application_test applicant, so only complete (non-sample) runs export.
+        kdir = Path(view["run_dir"]) / "kaggle"
+        kdir.mkdir(exist_ok=True)
+        for name, col in (("champion", "pd_champion"), ("challenger", "pd_challenger")):
+            path = kdir / f"submission_{name}.csv"
+            external[[col]].rename(columns={col: "TARGET"}).reset_index().to_csv(path, index=False)
+            kaggle[name] = str(path)
     with open(files["scorecard"], "wb") as f:
         pickle.dump(sc, f)
     with open(files["proxy"], "wb") as f:
@@ -142,8 +159,10 @@ def model(view):
                 "calibration": cal_ch.reason,
                 "calibration_applied": cal_ch.applied,
                 "train_gini": round(gini(tr["TARGET"], tr["pd_champion"]), 4),
+                "train_auc": round((gini(tr["TARGET"], tr["pd_champion"]) + 1) / 2, 4),
                 "train_ks": round(ks(tr["TARGET"], tr["pd_champion"]), 4),
                 "oof_gini": round(gini(ytr, oof_ch), 4),
+                "oof_auc": round((gini(ytr, oof_ch) + 1) / 2, 4),
                 "scaling": {"pdo": sc.pdo, "base_score": sc.base_score, "base_odds": sc.base_odds},
             },
             "challenger": {
@@ -153,13 +172,22 @@ def model(view):
                 "calibration": cal_cl.reason,
                 "calibration_applied": cal_cl.applied,
                 "train_gini": round(gini(tr["TARGET"], tr["pd_challenger"]), 4),
+                "train_auc": round((gini(tr["TARGET"], tr["pd_challenger"]) + 1) / 2, 4),
                 "oof_gini": round(gini(ytr, oof_cl), 4),
+                "oof_auc": round((gini(ytr, oof_cl) + 1) / 2, 4),
             },
             "origination_proxy": {
                 "type": "WoE logistic regression, application leg only (ECL SICR proxy, D6)",
                 "features": proxy_feats,
                 "train_gini": round(gini(tr["TARGET"], tr["pd_origination_proxy"]), 4),
+                "train_auc": round((gini(tr["TARGET"], tr["pd_origination_proxy"]) + 1) / 2, 4),
             },
+            "external": {
+                "n_scored": int(len(external)),
+                "kaggle_submissions": kaggle,
+                "note": "application_test has no TARGET; scored for a score-PSI check "
+                "and Kaggle submission only",
+            },  # fmt: skip
             "master_scale": {
                 "pd_upper_bounds": bounds,
                 "train_grade_counts": {

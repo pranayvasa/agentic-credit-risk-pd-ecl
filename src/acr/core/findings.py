@@ -38,7 +38,7 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
                 "Performance",
                 "red",
                 f"Champion {part} Gini below gate",
-                f"{part} Gini {g:.4f} is below the minimum {floor:.2f}.",
+                f"{part} Gini {g:.4f} (AUC {ch[part]['auc']:.4f}) is below the minimum {floor:.2f}.",
                 "Revisit feature engineering and selection; do not deploy.",
             )
         elif g < floor + v.gini_amber_margin:
@@ -46,7 +46,8 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
                 "Performance",
                 "medium",
                 f"Champion {part} Gini close to gate",
-                f"{part} Gini {g:.4f} is within {v.gini_amber_margin:.2f} of the {floor:.2f} minimum.",
+                f"{part} Gini {g:.4f} (AUC {ch[part]['auc']:.4f}) is within {v.gini_amber_margin:.2f} "
+                f"of the {floor:.2f} minimum.",
                 "Monitor closely; set an early-warning trigger in the monitoring plan.",
             )
 
@@ -56,7 +57,9 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             "Performance",
             "medium",
             "Champion overfitting",
-            f"Train Gini exceeds OOT Gini by {gap:.4f} (threshold {v.overfit_gap_medium:.2f}).",
+            f"Train Gini {ch['train']['gini']:.4f} (AUC {ch['train']['auc']:.4f}) exceeds OOT Gini "
+            f"{ch['oot']['gini']:.4f} (AUC {ch['oot']['auc']:.4f}) by {gap:.4f} "
+            f"(threshold {v.overfit_gap_medium:.2f}).",
             "Simplify the scorecard or strengthen selection.",
         )
     cl = m["challenger"]["performance"]
@@ -66,8 +69,9 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             "Benchmarking",
             "medium",
             "Challenger overfits the training data",
-            f"LightGBM train Gini {cl['train']['gini']:.4f} vs OOT {cl['oot']['gini']:.4f} "
-            f"(gap {cl_gap:.4f}, threshold {v.overfit_gap_medium:.2f}).",
+            f"LightGBM train Gini {cl['train']['gini']:.4f} (AUC {cl['train']['auc']:.4f}) vs OOT "
+            f"Gini {cl['oot']['gini']:.4f} (AUC {cl['oot']['auc']:.4f}); gap {cl_gap:.4f}, "
+            f"threshold {v.overfit_gap_medium:.2f}.",
             "Treat challenger train metrics as optimistic; compare on holdout only.",
         )
 
@@ -77,8 +81,10 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             "Benchmarking",
             "medium",
             "Challenger materially outperforms champion",
-            f"OOT Gini difference {cmp_['diff']:.4f} (95% bootstrap CI {cmp_['ci_low']:.4f} to "
-            f"{cmp_['ci_high']:.4f}) exceeds {v.challenger_gap_medium:.2f}.",
+            f"Challenger OOT Gini {cl['oot']['gini']:.4f} (AUC {cl['oot']['auc']:.4f}) vs champion "
+            f"{ch['oot']['gini']:.4f} (AUC {ch['oot']['auc']:.4f}): Gini difference "
+            f"{cmp_['diff']:.4f} (95% bootstrap CI {cmp_['ci_low']:.4f} to {cmp_['ci_high']:.4f}; "
+            f"AUC difference {cmp_['diff'] / 2:.4f}) exceeds {v.challenger_gap_medium:.2f}.",
             "Document why the interpretable scorecard is preferred, or investigate the non-linear "
             "effects the challenger captures (interactions, finer bins).",
         )
@@ -88,7 +94,8 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             "low",
             "Challenger outperforms champion, within tolerance",
             f"OOT Gini difference {cmp_['diff']:.4f} (95% CI {cmp_['ci_low']:.4f} to "
-            f"{cmp_['ci_high']:.4f}) is significant but below {v.challenger_gap_medium:.2f}.",
+            f"{cmp_['ci_high']:.4f}; AUC difference {cmp_['diff'] / 2:.4f}) is significant but "
+            f"below {v.challenger_gap_medium:.2f}.",
             "Acceptable cost of interpretability; keep under review.",
         )
 
@@ -128,8 +135,30 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
         "Re-validate on a true out-of-time sample; monitor per-feature CSI alongside score PSI.",
     )
 
+    ext = m["stability"].get("external")
+    if ext:
+        x = ext["score_psi"]
+        sev, label = (
+            ("red", "unstable")
+            if x >= gate.psi_red
+            else (("medium", "shifted") if x >= gate.psi_amber else ("info", "stable"))
+        )
+        add(
+            "Stability",
+            sev,
+            f"External population (application_test) score distribution {label}",
+            f"Score PSI of {ext['n']:,} unlabelled application_test applicants against train: "
+            f"{x:.4f} (amber {gate.psi_amber:.2f}, red {gate.psi_red:.2f}); challenger PD PSI "
+            f"{ext['challenger_pd_psi']:.4f}. Mean champion PD {ext['mean_pd_champion']:.4f} vs "
+            f"{ext['mean_pd_champion_train']:.4f} on train. No outcomes exist for this "
+            "population, so only distributional stability can be checked; it was drawn from the "
+            "same period, so it is not a temporal test either.",
+            "Investigate drivers if amber or red." if sev != "info" else "",
+        )  # fmt: skip
+
+    csi_cols = [c for c in csi.columns if c.startswith("csi_")]
     for _, r in csi.iterrows():
-        w = max(r["csi_test"], r["csi_oot"])
+        w = max(r[c] for c in csi_cols)
         if w >= v.csi_red:
             add(
                 "Stability",
@@ -226,7 +255,8 @@ def build_findings(m: dict, grades: pd.DataFrame, csi: pd.DataFrame, seg: pd.Dat
             "Segments",
             "medium",
             f"Weak discrimination in {r.segment} = {r.value}",
-            f"OOT Gini {r.gini:.4f} (threshold {v.segment_gini_min:.2f}, n = {r.n:,}).",
+            f"OOT Gini {r.gini:.4f} (AUC {r.auc:.4f}; threshold Gini {v.segment_gini_min:.2f}, "
+            f"n = {r.n:,}).",
             "Consider a segment-specific model or overlay.",
         )
     miscal = judged[(judged["pd_to_dr"] - 1).abs() > v.calibration_ratio_tol]

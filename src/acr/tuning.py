@@ -128,6 +128,9 @@ def _summarise(rows: list[dict], keys: list[str]) -> pd.DataFrame:
     out = out.rename(columns={"n_trees": "n_trees_mean"}) if "n_trees" in out else out
     out["cv_gini_se"] = out["cv_gini_std"] / np.sqrt(df["fold"].nunique())
     out["overfit_gap"] = out["fit_gini_mean"] - out["cv_gini_mean"]
+    out.insert(
+        out.columns.get_loc("cv_gini_mean") + 1, "cv_auc_mean", (out["cv_gini_mean"] + 1) / 2
+    )
     return out
 
 

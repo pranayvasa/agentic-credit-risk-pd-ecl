@@ -28,6 +28,7 @@ APP_PROTECTED = ["CODE_GENDER", "NAME_FAMILY_STATUS"]
 
 REQUIRED_COLUMNS: dict[str, list[str]] = {
     "application": [ID, TARGET, *APP_NUMERIC, *APP_CATEGORICAL, *APP_PROTECTED],
+    "application_test": [ID, *APP_NUMERIC, *APP_CATEGORICAL, *APP_PROTECTED],
     "bureau": [
         ID, "SK_ID_BUREAU", "CREDIT_ACTIVE", "DAYS_CREDIT", "CREDIT_DAY_OVERDUE",
         "DAYS_CREDIT_ENDDATE", "AMT_CREDIT_MAX_OVERDUE", "CNT_CREDIT_PROLONG", "AMT_CREDIT_SUM",
@@ -54,6 +55,10 @@ REQUIRED_COLUMNS: dict[str, list[str]] = {
 }  # fmt: skip
 
 # Amounts kept at float64 in the cache (they feed EIR and EAD maths in the ECL layer).
-KEEP_FLOAT64 = {"application": {"AMT_INCOME_TOTAL", "AMT_CREDIT", "AMT_ANNUITY", "AMT_GOODS_PRICE"}}
+_AMOUNTS = {"AMT_INCOME_TOTAL", "AMT_CREDIT", "AMT_ANNUITY", "AMT_GOODS_PRICE"}
+KEEP_FLOAT64 = {"application": _AMOUNTS, "application_test": _AMOUNTS}
+
+# Tables whose absence is not critical: the dependent steps are skipped instead.
+OPTIONAL_TABLES = {"application_test"}
 
 BUREAU_STATUS_DOMAIN = {"0", "1", "2", "3", "4", "5", "C", "X"}

@@ -117,10 +117,19 @@ def decile_table(df: pd.DataFrame, pd_col: str) -> pd.DataFrame:
 
 
 def csi_table(bins: pd.DataFrame, partition: pd.Series, features: list[str]) -> pd.DataFrame:
+    """CSI per feature against train, for test, OOT and (when present) the unlabelled
+    external population (rows whose partition is ``"external"``)."""
     base = bins.loc[partition == "train"]
-    rows = [{"feature": f, "csi_test": psi(base[f], bins.loc[partition == "test", f]),
-             "csi_oot": psi(base[f], bins.loc[partition == "oot", f])} for f in features]  # fmt: skip
+    targets = [p for p in ("test", "oot", "external") if (partition == p).any()]
+    rows = [{"feature": f, **{f"csi_{p}": psi(base[f], bins.loc[partition == p, f]) for p in targets}}
+            for f in features]  # fmt: skip
     return pd.DataFrame(rows)
+
+
+def external_psi(train: pd.Series, external: pd.Series) -> float:
+    """PSI of an unlabelled population against train, over train-defined deciles."""
+    edges = _decile_edges(train)
+    return psi(pd.cut(train, edges, labels=False), pd.cut(external, edges, labels=False))
 
 
 def segments(df: pd.DataFrame, seg: pd.DataFrame, pd_col: str) -> pd.DataFrame:
@@ -132,6 +141,7 @@ def segments(df: pd.DataFrame, seg: pd.DataFrame, pd_col: str) -> pd.DataFrame:
                 "segment": var, "value": str(val), "n": int(len(g)), "default_rate": float(y.mean()),
                 "mean_pd": float(p.mean()), "pd_to_dr": float(p.mean() / y.mean()) if y.mean() > 0 else np.nan,
                 "gini": gini(y, p) if 0 < y.sum() < len(y) else np.nan,
+                "auc": (gini(y, p) + 1) / 2 if 0 < y.sum() < len(y) else np.nan,
             })  # fmt: skip
     return pd.DataFrame(rows)
 

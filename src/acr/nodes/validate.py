@@ -98,15 +98,30 @@ def validate(view):
 
     cat = [f for f in bp.variable_names if f in meta["categorical"]]
     bins = B.bins(bp, features[list(bp.variable_names)], cat)
-    csi = V.csi_table(bins, scored["partition"].reindex(bins.index), selected)
+    ext = (pd.read_parquet(model["paths"]["scored_external"])
+           if "scored_external" in model["paths"] else None)  # fmt: skip
+    part = scored["partition"].reindex(bins.index)
+    if ext is not None:
+        part = part.where(~bins.index.isin(ext.index), "external")
+    csi = V.csi_table(bins, part, selected)
+    csi_cols = [c for c in csi.columns if c.startswith("csi_")]
     m["stability"] = {
         "score_psi": V.score_psi(scored),
         "stress_psi": {
             f"under30_x{w:g}": V.stress_psi(scored, features["APP_AGE_YEARS"], w)
             for w in v.stress_young_weights
         },
-        "csi_max": float(csi[["csi_test", "csi_oot"]].to_numpy().max()) if len(csi) else 0.0,
+        "csi_max": float(csi[csi_cols].to_numpy().max()) if len(csi) else 0.0,
     }
+    if ext is not None:
+        trn = scored[scored["partition"] == "train"]
+        m["stability"]["external"] = {
+            "n": int(len(ext)),
+            "score_psi": V.external_psi(trn["score"], ext["score"]),
+            "challenger_pd_psi": V.external_psi(trn["pd_challenger"], ext["pd_challenger"]),
+            "mean_pd_champion": float(ext["pd_champion"].mean()),
+            "mean_pd_champion_train": float(trn["pd_champion"].mean()),
+        }
     seg = V.segments(oot, _segment_frame(features), "pd_champion")
     m["comparison"] = V.bootstrap_gini_diff(oot["TARGET"], oot["pd_champion"], oot["pd_challenger"],
                                             v.bootstrap_n, c.base.seed)  # fmt: skip

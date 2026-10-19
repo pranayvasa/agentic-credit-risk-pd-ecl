@@ -298,6 +298,11 @@ stratified on `TARGET`, with a fixed seed. Final shares: **56.25 / 18.75 / 25**.
 
 The split happens on `SK_ID_CURR` **before anything learns from the data**. Home Credit has
 no application dates, so the OOT is a **pseudo-OOT** (random holdout), not a temporal one.
+
+**`application_test.csv`** is Kaggle's scoring set and has **no TARGET**, so it can't be a
+validation partition. It is kept separate as an **external, unlabelled** population. Legs
+build its features and the model scores it, but nothing is fitted on it. It feeds a
+score-PSI and CSI check in validation, and full runs export Kaggle submission files.
 """)
 code("""
 import acr.core.split
@@ -474,7 +479,7 @@ from acr.nodes.model import model
 
 step(model, state)
 m = state["model"]
-display(pd.DataFrame({k: {kk: m[k].get(kk) for kk in ("type", "n_features", "train_gini", "oof_gini", "calibration")}
+display(pd.DataFrame({k: {kk: m[k].get(kk) for kk in ("type", "n_features", "train_auc", "train_gini", "oof_auc", "oof_gini", "calibration")}
                       for k in ("champion", "challenger")}).T)
 print("origination proxy features:", m["origination_proxy"]["features"])
 """)
@@ -504,6 +509,9 @@ What it computes:
 * rank-ordering
 * OOT segments, including gender as a fairness check
 * champion vs challenger, with a bootstrap 95% CI
+* an external score-PSI and CSI check on the unlabelled `application_test` population
+
+Every Gini is reported with its **AUC** (Gini = 2 × AUC − 1), the metric Kaggle uses.
 
 `core/findings.py` turns these into **structured findings** with severities (info → red),
 each stating its threshold. Only **red** findings drive the gate: they halt full runs and
@@ -528,7 +536,7 @@ step(validate, state)
 v = state["validation"]
 perf = {f"{model_} {part}": x for model_ in ("champion", "challenger")
         for part, x in v["metrics"][model_]["performance"].items()}
-display(pd.DataFrame(perf).T[["n", "default_rate", "mean_pd", "gini", "ks", "brier"]].round(4))
+display(pd.DataFrame(perf).T[["n", "default_rate", "mean_pd", "auc", "gini", "ks", "brier"]].round(4))
 print("gate decision:", v["gate_decision"], "| findings by severity:", v["findings_by_severity"])
 """)
 code("""
